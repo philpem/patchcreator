@@ -1,0 +1,130 @@
+version: 0.1
+units: mm
+
+canvas:
+  shape: circle
+  diameter: 80
+  background: space
+  safe_margin:
+    fixed: 3
+
+profile:
+  machine: brother-innovis-750e
+  intent: standard-patch
+
+metadata:
+  title: "Example Shared Orbit Patch"
+
+palette:
+  space: "#000000"
+  border: "#ffc928"
+  sea: "#1358a8"
+  land: "#63bd50"
+  white: "#ffffff"
+  orbit: "#ffc928"
+
+settings:
+  default_clip: safe-area
+  inkscape_metadata: true
+  construction_guides: true
+  embroidery_safety: true
+
+layers:
+  - id: background
+    label: Background
+    elements:
+      - id: stars
+        type: starfield
+        seed: auto
+        region:
+          type: annular-sector
+          inner_radius: 0.20r
+          outer_radius: 0.90r
+          angle_start: 285deg
+          angle_end: 75deg
+        count: 12
+        avoidance:
+          - target: earth
+            clearance: 1.5
+          - target: title
+            clearance: 1.5
+        clip:
+          target: safe-area
+        overlap_policy: avoid
+
+      - id: earth
+        type: earth
+        render: globe
+        diameter: 30
+        viewpoint:
+          latitude: 20deg
+          longitude: -90deg
+        position:
+          mode: polar
+          angle: 180deg
+          radius: 19
+        style:
+          sea: sea
+          land: land
+          atmosphere: null
+
+  - id: paths
+    label: Paths
+    elements:
+      - id: orbit-main
+        type: orbit
+        centre:
+          target: earth
+        radius_x: 31
+        radius_y: 11
+        rotation: 0deg
+        stroke:
+          colour: orbit
+          width: 0.9
+        occlusion:
+          behind:
+            - earth
+          gap: 0.5
+
+      - id: orbit-marker
+        type: star
+        glyph: dot
+        size: 2.5
+        fill: border
+        position:
+          mode: path
+          path: orbit-main
+          at: 0.12
+          orient: tangent
+
+  - id: title
+    label: Text
+    elements:
+      - id: title
+        type: text
+        text: "SHARED ORBIT"
+        layout:
+          type: bottom-arc
+          radius: 34
+          start_angle: 225deg
+          end_angle: 135deg
+        font:
+          family: "DejaVu Sans"
+          weight: 700
+          size: 5.5
+          tracking: auto
+        fill: border
+        clip:
+          target: none
+
+  - id: border
+    label: Border
+    elements:
+      - id: outer-border
+        type: border
+        stroke:
+          colour: border
+          width: 1.5
+        inset: 1.2
+        clip:
+          target: none
