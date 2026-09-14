@@ -343,10 +343,10 @@ def _finalize_starfield(
                     f"starfield {field_id!r} avoidance target {item.target!r} does not exist"
                 ) from exc
             if target.resolved_bounds is None:
-                if item.target in finalize_context.unsupported_node_ids:
+                if item.target in finalize_context.skipped_node_ids:
                     warnings.append(
                         f"starfield {field_id!r} could not apply avoidance target {item.target!r}: "
-                        "target component was skipped in this partial render"
+                        "target was skipped in this partial render"
                     )
                     continue
                 raise ValueError(
