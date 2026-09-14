@@ -112,13 +112,74 @@ Placement supplies the node's local `AffineTransform`. A resolution pass walks t
 - a world transform;
 - document-space axis-aligned bounds;
 - named document-space anchors;
-- standard bounds-derived anchors such as `centre`, `top`, `left`, and corners.
+- standard bounds-derived anchors such as `centre`, `top`, `left`, and corners;
+- an `origin` anchor even for geometry-less groups.
 
 Groups and layers which do not have geometry of their own receive aggregate bounds from their descendants. Component-provided anchors override bounds-derived anchors of the same name.
 
 The affine matrix representation follows SVG's six-value matrix convention. This keeps the scene model and editable SVG output compatible without making the SVG DOM itself the internal scene graph.
 
-The scene graph deliberately does **not** make placement decisions during this generic resolution pass. The placement subsystem resolves Cartesian/polar/anchor/path-following rules into local transforms first; scene resolution then combines those transforms and geometry deterministically.
+## Placement and coordinate frames
+
+Placement is a separate pass from generic scene resolution. Components first expose local bounds/anchors; placement resolves artist-facing rules to local affine transforms; the scene resolver then aggregates final world bounds and anchors.
+
+The default placement frame is:
+
+- origin at patch centre;
+- reference radius equal to the patch reference radius;
+- axes aligned with SVG/Inkscape coordinates (positive X right, positive Y down).
+
+Polar coordinates retain the artist-facing convention of 0 degrees up and increasing clockwise.
+
+A container can establish a frame for its children:
+
+```yaml
+- id: constellation
+  type: group
+  position:
+    mode: cartesian
+    x: 12
+    y: -5
+    self_anchor: origin
+  frame:
+    origin: self
+    reference_radius: 10
+  elements:
+    - id: star-a
+      type: star
+      position:
+        mode: polar
+        angle: 60deg
+        radius: 0.7r
+```
+
+Frame rules are deliberately explicit:
+
+- no `frame` property: inherit the parent frame unchanged;
+- `origin: inherit`: retain the parent frame origin/axes, optionally changing only `reference_radius`;
+- `origin: self`: place the child frame at this node's local origin and make its axes follow this node's transform;
+- `origin: [x, y]`: as above, but use an explicit point in this node's local coordinate system.
+
+This lets ordinary nested groups continue to use patch coordinates while a constellation, instrument reticle or similar subsystem can opt into its own movable/rotatable polar frame.
+
+All placement modes may select a `self_anchor`. Visual objects normally use `centre`; geometry-less positioning groups normally use `origin`.
+
+Relative placement names the target and target anchor separately:
+
+```yaml
+position:
+  mode: relative
+  target: dragon-blue
+  target_anchor: nose
+  self_anchor: centre
+  offset: [2, -1]
+```
+
+The initial resolver uses anchors belonging to the target's own local geometry. Aggregate group bounds are produced by the subsequent scene-resolution pass and therefore are not dependency inputs for relative placement.
+
+Path-following placement consumes a small `PathSampler` protocol rather than SVG path syntax. Path components can therefore provide analytic or Bézier implementations later without changing placement. Samplers return document-space point and tangent information. Fractional positions accept either `0.35` or `35%`; positive normal offset is to the visual right of the path in SVG's y-down coordinate system.
+
+Dependency resolution allows an object to reference a later sibling and detects relative-placement cycles explicitly.
 
 ## Key architectural rule
 

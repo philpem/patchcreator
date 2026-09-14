@@ -61,6 +61,45 @@ class AffineTransform:
             self.b * x + self.d * y + self.f,
         )
 
+    def apply_vector(self, vector: Point) -> Point:
+        """Apply only the linear part of the transform to a vector."""
+        x, y = vector
+        return (
+            self.a * x + self.c * y,
+            self.b * x + self.d * y,
+        )
+
+    def inverse(self) -> "AffineTransform":
+        """Return the inverse transform.
+
+        Placement needs this when an artist-facing coordinate frame is in
+        document space but the node transform must be stored relative to its
+        parent. Singular transforms cannot represent a usable coordinate frame.
+        """
+        determinant = self.a * self.d - self.b * self.c
+        if abs(determinant) < 1e-12:
+            raise ValueError("cannot invert a singular affine transform")
+
+        return AffineTransform(
+            a=self.d / determinant,
+            b=-self.b / determinant,
+            c=-self.c / determinant,
+            d=self.a / determinant,
+            e=(self.c * self.f - self.d * self.e) / determinant,
+            f=(self.b * self.e - self.a * self.f) / determinant,
+        )
+
+    def with_translation(self, point: Point) -> "AffineTransform":
+        """Keep the linear part and replace the translation component."""
+        return AffineTransform(
+            a=self.a,
+            b=self.b,
+            c=self.c,
+            d=self.d,
+            e=float(point[0]),
+            f=float(point[1]),
+        )
+
     def __matmul__(self, other: "AffineTransform") -> "AffineTransform":
         """Compose two transforms, applying ``other`` then ``self``."""
         return AffineTransform(

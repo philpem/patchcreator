@@ -58,6 +58,25 @@ class SceneNode:
         self.local_bounds = bounds
         self.local_anchors = dict(anchors or {})
 
+    def local_anchor(self, name: str) -> Point:
+        """Return an anchor in this node's untransformed local space.
+
+        Explicit component anchors take precedence over bounds-derived anchors.
+        ``origin`` is always available, which is especially useful when
+        positioning geometry-less groups that establish a child coordinate
+        frame.
+        """
+        if name in self.local_anchors:
+            return self.local_anchors[name]
+        if name == "origin":
+            return (0.0, 0.0)
+        if self.local_bounds is not None:
+            try:
+                return self.local_bounds.anchor(name)
+            except KeyError:
+                pass
+        raise KeyError(f"scene node {self.id!r} has no local anchor {name!r}")
+
     def resolve(self, parent_transform: AffineTransform | None = None) -> Bounds | None:
         """Resolve world transform, world bounds and anchors recursively.
 
@@ -92,6 +111,7 @@ class SceneNode:
                 for name, point in self.local_anchors.items()
             }
         )
+        anchors["origin"] = self.world_transform.apply((0.0, 0.0))
         self.resolved_anchors = anchors
         return self.resolved_bounds
 

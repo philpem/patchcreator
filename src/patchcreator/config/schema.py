@@ -15,6 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from patchcreator.profiles.model import ProfileConstraints
 
 
+LengthValue = float | str
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -102,24 +105,40 @@ class ClipSpec(StrictModel):
     inset: float = 0.0
 
 
+class CoordinateFrameSpec(StrictModel):
+    """Coordinate-frame override inherited by an element's children.
+
+    ``origin: inherit`` keeps the parent's frame and can be used to override
+    only its reference radius. ``origin: self`` establishes a frame at the
+    element's local origin with axes following the element transform. A pair is
+    interpreted as an explicit point in the element's local coordinate system.
+    """
+
+    origin: Literal["inherit", "self"] | tuple[LengthValue, LengthValue] = "inherit"
+    reference_radius: LengthValue | None = None
+
+
 class CartesianPosition(StrictModel):
     mode: Literal["cartesian"]
-    x: float = 0.0
-    y: float = 0.0
+    x: LengthValue = 0.0
+    y: LengthValue = 0.0
+    self_anchor: str = "centre"
 
 
 class PolarPosition(StrictModel):
     mode: Literal["polar"]
     angle: float | str
-    radius: float | str
-    reference_radius: float | str | None = None
+    radius: LengthValue
+    reference_radius: LengthValue | None = None
+    self_anchor: str = "centre"
 
 
 class RelativePosition(StrictModel):
     mode: Literal["relative"]
     target: str
+    target_anchor: str = "centre"
     self_anchor: str = "centre"
-    offset: tuple[float, float] = (0.0, 0.0)
+    offset: tuple[LengthValue, LengthValue] = (0.0, 0.0)
 
 
 class PathPosition(StrictModel):
@@ -127,7 +146,8 @@ class PathPosition(StrictModel):
     path: str
     at: float | str = 0.0
     orient: Literal["none", "tangent"] = "none"
-    normal_offset: float = 0.0
+    normal_offset: LengthValue = 0.0
+    self_anchor: str = "centre"
 
 
 PositionSpec = Annotated[
@@ -142,6 +162,7 @@ class ElementSpec(ExtensibleModel):
     label: str | None = None
     visible: bool = True
     position: PositionSpec | None = None
+    frame: CoordinateFrameSpec | None = None
     clip: ClipSpec | None = None
     overlap_policy: Literal["allow", "warn", "avoid", "knockout", "background"] = "warn"
     elements: list["ElementSpec"] = Field(default_factory=list)
@@ -155,6 +176,7 @@ class LayerSpec(StrictModel):
     id: str = Field(min_length=1)
     label: str | None = None
     visible: bool = True
+    frame: CoordinateFrameSpec | None = None
     elements: list[ElementSpec] = Field(default_factory=list)
 
 
