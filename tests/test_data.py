@@ -111,7 +111,7 @@ def test_require_dataset_never_fetches_implicitly(tmp_path: Path):
     with pytest.raises(DatasetNotInstalledError) as excinfo:
         require_dataset("fixture", root=tmp_path, catalog=catalog)
     assert "patchcreator data fetch fixture" in str(excinfo.value)
-    assert not tmp_path.exists()
+    assert not (tmp_path / "fixture").exists()
 
 
 def test_data_list_cli_requires_no_network(tmp_path: Path, capsys):
