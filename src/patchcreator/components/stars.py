@@ -332,6 +332,7 @@ def _finalize_starfield(
         rng = random.Random(seed)
         fill = _colour(context.design, fill_name)
         world_to_local = node.world_transform.inverse()
+        warnings: list[str] = []
 
         avoid_bounds: list[tuple[str, Bounds]] = []
         for item in avoidance:
@@ -342,6 +343,12 @@ def _finalize_starfield(
                     f"starfield {field_id!r} avoidance target {item.target!r} does not exist"
                 ) from exc
             if target.resolved_bounds is None:
+                if item.target in finalize_context.unsupported_node_ids:
+                    warnings.append(
+                        f"starfield {field_id!r} could not apply avoidance target {item.target!r}: "
+                        "target component was skipped in this partial render"
+                    )
+                    continue
                 raise ValueError(
                     f"starfield {field_id!r} avoidance target {item.target!r} has no resolved geometry"
                 )
@@ -382,7 +389,6 @@ def _finalize_starfield(
         context.target_group.set(_q(PATCHCREATOR_NS, "requested-count"), str(count))
         context.target_group.set(_q(PATCHCREATOR_NS, "placed-count"), str(len(placed)))
 
-        warnings: list[str] = []
         if generated_seed:
             warnings.append(
                 f"starfield {field_id!r} generated seed {seed}; set seed: {seed} to reproduce this layout"
