@@ -32,6 +32,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "patchcreator.profiles" = ["defaults/*.yaml", "defaults/*.yml"]
+"patchcreator.data" = ["sources.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
