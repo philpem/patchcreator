@@ -63,3 +63,28 @@ layers:
     result = render_design(design, allow_unsupported=True)
     assert result.warnings
     assert "future-earth" in result.warnings[0]
+
+
+def test_explicit_inherit_uses_design_default_clip():
+    design = loads_design(
+        """
+version: 0.1
+canvas:
+  shape: circle
+  diameter: 80
+  safe_margin: {fixed: 3}
+settings:
+  default_clip: safe-area
+layers:
+  - id: art
+    elements:
+      - id: rim
+        type: border
+        clip: {target: inherit}
+"""
+    )
+    result = render_design(design)
+    root = ET.fromstring(result.svg)
+    group = root.find(f".//{{{SVG_NS}}}g[@id='rim']")
+    assert group is not None
+    assert group.attrib["clip-path"] == "url(#clip-safe-area)"
