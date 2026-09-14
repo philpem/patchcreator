@@ -99,8 +99,9 @@ class DataSource:
 
 class DataCatalog:
     def __init__(self, sources: Iterable[DataSource]) -> None:
-        self._sources = {source.name: source for source in sources}
-        if len(self._sources) != len(tuple(sources)):
+        source_list = tuple(sources)
+        self._sources = {source.name: source for source in source_list}
+        if len(self._sources) != len(source_list):
             raise DataSourceError("duplicate external data source name")
 
     def get(self, name: str) -> DataSource:
@@ -126,11 +127,13 @@ def load_data_catalog() -> DataCatalog:
     raw_sources = document.get("sources") or {}
     if not isinstance(raw_sources, dict):
         raise DataSourceError("external data manifest 'sources' must be a mapping")
-    return DataCatalog(
-        DataSource.from_mapping(str(name), raw)
-        for name, raw in raw_sources.items()
-        if isinstance(raw, dict)
-    )
+
+    sources: list[DataSource] = []
+    for name, raw in raw_sources.items():
+        if not isinstance(raw, dict):
+            raise DataSourceError(f"data source {name!r} must be a mapping")
+        sources.append(DataSource.from_mapping(str(name), raw))
+    return DataCatalog(sources)
 
 
 def resolve_data_root(override: str | Path | None = None) -> Path:
