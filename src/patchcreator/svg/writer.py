@@ -331,8 +331,10 @@ def _render_element(
 def _run_finalizers(
     graph: SceneGraph,
     finalizers: list[DeferredFinalizer],
+    unsupported: set[str],
     warnings: list[str],
 ) -> None:
+    unsupported_node_ids = frozenset(unsupported)
     for callback, element, render_context in finalizers:
         node = graph.find(element.id)
         before_bounds = node.local_bounds
@@ -343,6 +345,7 @@ def _run_finalizers(
                 render_context=render_context,
                 graph=graph,
                 scene_node=node,
+                unsupported_node_ids=unsupported_node_ids,
             )
         )
         if node.local_bounds != before_bounds or node.local_anchors != before_anchors:
@@ -455,7 +458,7 @@ def render_design(
         paths=scene_paths,
         skip_node_ids=unsupported,
     ).resolve()
-    _run_finalizers(graph, finalizers, warnings)
+    _run_finalizers(graph, finalizers, unsupported, warnings)
     _apply_scene_transforms(graph, svg_groups)
     _apply_clips(design, geometry, defs, graph, svg_groups)
 
