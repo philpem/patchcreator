@@ -28,12 +28,18 @@ class ComponentFinalizeContext:
     the SVG writer and scene modules. Components can inspect ``graph`` and
     ``scene_node`` and append final editable geometry to
     ``render_context.target_group``.
+
+    ``unsupported_node_ids`` identifies nodes deliberately skipped by a partial
+    render. Finalizers may use this to degrade gracefully for dependencies on
+    unsupported components without masking genuine missing/invalid geometry in
+    strict renders.
     """
 
     element: Any
     render_context: Any
     graph: Any
     scene_node: Any
+    unsupported_node_ids: frozenset[str] = frozenset()
 
 
 ComponentFinalizer = Callable[[ComponentFinalizeContext], Iterable[str] | None]
