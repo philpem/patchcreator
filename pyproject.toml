@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patchcreator"
+version = "0.1.0.dev0"
+description = "Procedural, embroidery-aware mission patch SVG composition"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  {name = "Phil Pemberton"},
+]
+dependencies = [
+  "pydantic>=2.7,<3",
+  "ruamel.yaml>=0.18,<0.19",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+]
+
+[project.scripts]
+patchcreator = "patchcreator.cli:main"
+
+[project.entry-points."patchcreator.components"]
+# Third-party packages may register component factories/renderers here.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
