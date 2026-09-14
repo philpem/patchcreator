@@ -1,6 +1,12 @@
 from .graph import DuplicateNodeIdError, SceneGraph
 from .node import SceneNode
-from .placement import PlacementCycleError, PlacementError, PlacementFrame, PlacementResolver
+from .placement import (
+    PlacementCycleError,
+    PlacementError,
+    PlacementFrame,
+    PlacementResolver,
+    ScenePathBinding,
+)
 
 __all__ = [
     "DuplicateNodeIdError",
@@ -10,4 +16,5 @@ __all__ = [
     "PlacementResolver",
     "SceneGraph",
     "SceneNode",
+    "ScenePathBinding",
 ]
