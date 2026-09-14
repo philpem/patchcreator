@@ -296,7 +296,21 @@ The normalisation workflow should be a separate reusable tool rather than hidden
 
 Earth shall be recognisable and geographically accurate enough that visible continents are not symbolic inventions.
 
-Source geometry should come from real coastline data, then be simplified according to physical output scale and profile constraints.
+Source geometry should come from real coastline/land data, then be simplified according to physical output scale and profile constraints.
+
+### 12.1 External geographic data
+
+Third-party geographic datasets shall not be vendored into the PatchCreator repository. The repository may contain only a small source manifest with URLs, upstream identity/version, expected files, licence/attribution information and optional checksums.
+
+Dataset acquisition is explicit. Rendering must never silently download a missing dataset. Components requiring external data shall use the shared data-cache API and produce an actionable diagnostic such as:
+
+```text
+patchcreator data fetch natural-earth-land-110m
+```
+
+The default cache shall be outside the checkout, following `PATCHCREATOR_DATA_DIR`, then `XDG_CACHE_HOME`, then `~/.cache/patchcreator/data`. Unit tests shall use local synthetic fixtures and shall not require network access.
+
+For the initial Earth component, Natural Earth 1:110m land polygons are the preferred source because this scale is appropriate to small world maps. Higher-detail Natural Earth scales may be added later if testing demonstrates useful retained detail on larger patches. See `docs/external-data.md` for the complete acquisition and attribution policy.
 
 Initial render modes should include:
 
@@ -492,9 +506,11 @@ patchcreator render design.yaml
 patchcreator check artwork.svg
 patchcreator normalize asset.svg
 patchcreator profiles list
+patchcreator data list
+patchcreator data fetch natural-earth-land-110m
 ```
 
-The CLI must be a thin layer over the Python library.
+The CLI must be a thin layer over the Python library. External-data commands are explicit user actions; render/check operations shall not trigger downloads implicitly.
 
 ## 23. Future GUI
 
