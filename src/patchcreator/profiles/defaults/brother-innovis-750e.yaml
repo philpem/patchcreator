@@ -1,0 +1,7 @@
+name: brother-innovis-750e
+kind: machine
+description: >-
+  Brother Innov-is 750E machine profile. Geometry thresholds are intentionally
+  left to the design-intent profile until machine/material-specific limits have
+  been validated experimentally.
+constraints: {}
