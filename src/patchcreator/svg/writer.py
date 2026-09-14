@@ -90,7 +90,9 @@ def _clip_target(element: ElementSpec, design: DesignSpec) -> str | None:
     else:
         target = design.settings.default_clip
 
-    if target in {"none", "inherit"}:
+    if target == "inherit":
+        target = design.settings.default_clip
+    if target == "none":
         return None
     if target == "patch":
         return "clip-patch"
