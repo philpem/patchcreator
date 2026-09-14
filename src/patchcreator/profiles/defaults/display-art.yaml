@@ -1,0 +1,5 @@
+name: display-art
+kind: intent
+description: Disable embroidery geometry filtering for display-only artwork.
+constraints:
+  validation_enabled: false
