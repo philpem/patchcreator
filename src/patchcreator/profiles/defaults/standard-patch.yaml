@@ -1,0 +1,13 @@
+name: standard-patch
+kind: intent
+experimental: true
+description: >-
+  Initial conservative patch-geometry heuristics. These values are provisional
+  and should be tuned against real stitch-outs rather than treated as universal
+  embroidery limits.
+constraints:
+  validation_enabled: true
+  minimum_stroke_width: 0.6
+  minimum_gap: 0.6
+  minimum_feature_dimension: 0.8
+  minimum_island_area: 1.5

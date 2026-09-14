@@ -12,6 +12,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from patchcreator.profiles.model import ProfileConstraints
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -64,6 +66,7 @@ class CanvasSpec(StrictModel):
 class ProfileSpec(StrictModel):
     machine: str | None = None
     intent: str | None = None
+    overrides: ProfileConstraints = Field(default_factory=ProfileConstraints)
 
 
 class MetadataSpec(BaseModel):
