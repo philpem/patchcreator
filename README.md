@@ -13,16 +13,39 @@ The project deliberately targets patch-like composition rather than replacing a 
 
 ## Current status
 
-Early design/specification phase.
+Early implementation. The repository now contains the YAML model/loader, the first scene-graph structures, physical patch/safe-area geometry and an editable SVG writer capable of producing a circular or elliptical canvas and border. Most procedural components and embroidery validation are still tracked as roadmap issues.
 
 See:
 
 - [`docs/specification.md`](docs/specification.md) — design requirements and behaviour;
 - [`docs/architecture.md`](docs/architecture.md) — proposed Python/scene-graph architecture;
-- [`docs/initial-issues.md`](docs/initial-issues.md) — initial implementation backlog;
-- [`examples/basic-round-patch.yaml`](examples/basic-round-patch.yaml) — example declarative design.
+- [`docs/initial-issues.md`](docs/initial-issues.md) — implementation backlog;
+- [`examples/minimal-patch.yaml`](examples/minimal-patch.yaml) — currently renderable example;
+- [`examples/basic-round-patch.yaml`](examples/basic-round-patch.yaml) — target end-to-end procedural example.
 
-## Planned command-line interface
+## Development install
+
+PatchCreator requires Python 3.11 or later.
+
+```text
+python -m pip install -e '.[dev]'
+pytest
+patchcreator --help
+```
+
+Render the minimal example with:
+
+```text
+patchcreator render examples/minimal-patch.yaml
+```
+
+The richer `basic-round-patch.yaml` deliberately references components which are not all implemented yet. During development it can be rendered with unsupported elements skipped:
+
+```text
+patchcreator render --allow-unsupported examples/basic-round-patch.yaml
+```
+
+## Command-line interface
 
 ```text
 patchcreator render design.yaml
@@ -30,6 +53,8 @@ patchcreator check artwork.svg
 patchcreator normalize asset.svg
 patchcreator profiles list
 ```
+
+`render` is implemented first; the other commands are present as stable CLI entry points while their underlying subsystems are built.
 
 ## Design priorities
 
