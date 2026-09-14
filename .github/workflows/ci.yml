@@ -22,3 +22,33 @@ jobs:
         run: pytest
       - name: CLI smoke test
         run: patchcreator --help
+
+  inkscape-roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PatchCreator
+        run: python -m pip install -e .
+      - name: Install Inkscape and ImageMagick
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y inkscape imagemagick
+      - name: Render PatchCreator SVG
+        run: patchcreator render tests/data/inkscape-roundtrip.yaml -o /tmp/original.svg
+      - name: Round-trip through Inkscape
+        run: |
+          inkscape /tmp/original.svg --export-plain-svg --export-filename=/tmp/roundtrip.svg
+          inkscape /tmp/original.svg --export-area-page --export-width=800 --export-filename=/tmp/original.png
+          inkscape /tmp/roundtrip.svg --export-area-page --export-width=800 --export-filename=/tmp/roundtrip.png
+      - name: Verify visual output is unchanged
+        run: |
+          set +e
+          difference=$(compare -metric AE /tmp/original.png /tmp/roundtrip.png null: 2>&1)
+          status=$?
+          set -e
+          echo "different pixels: $difference"
+          test "$status" -eq 0
+          test "$difference" = "0"

@@ -1,0 +1,30 @@
+version: 0.1
+units: mm
+
+canvas:
+  shape: circle
+  diameter: 80
+  background: space
+  safe_margin:
+    fixed: 3
+
+palette:
+  space: "#10131a"
+  border: "#e8b828"
+
+settings:
+  default_clip: safe-area
+  inkscape_metadata: true
+
+layers:
+  - id: border
+    label: Border
+    elements:
+      - id: outer-border
+        type: border
+        inset: 2
+        stroke:
+          colour: border
+          width: 1.5
+        clip:
+          target: none
