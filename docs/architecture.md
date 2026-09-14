@@ -15,11 +15,12 @@ patchcreator/
     graph.py
     node.py
     placement.py
-    transforms.py
     clipping.py
     overlap.py
   geometry/
     units.py
+    primitives.py
+    transform.py
     paths.py
     boolean.py
     simplify.py
@@ -95,6 +96,29 @@ Layered configuration containing machine defaults and design-intent overrides.
 ### `Validator`
 
 Operates on scene geometry or an imported SVG geometry model and emits structured findings plus optional overlay geometry.
+
+## Scene geometry and resolution
+
+Scene nodes distinguish between **local** geometry and **resolved** document-space geometry.
+
+A component owns geometry in its own local coordinate system and supplies:
+
+- an optional axis-aligned local `Bounds`;
+- optional named local anchor points;
+- later, richer path/shape geometry for validation and occlusion.
+
+Placement supplies the node's local `AffineTransform`. A resolution pass walks the hierarchy and composes parent and child transforms. After resolution each node exposes:
+
+- a world transform;
+- document-space axis-aligned bounds;
+- named document-space anchors;
+- standard bounds-derived anchors such as `centre`, `top`, `left`, and corners.
+
+Groups and layers which do not have geometry of their own receive aggregate bounds from their descendants. Component-provided anchors override bounds-derived anchors of the same name.
+
+The affine matrix representation follows SVG's six-value matrix convention. This keeps the scene model and editable SVG output compatible without making the SVG DOM itself the internal scene graph.
+
+The scene graph deliberately does **not** make placement decisions during this generic resolution pass. The placement subsystem resolves Cartesian/polar/anchor/path-following rules into local transforms first; scene resolution then combines those transforms and geometry deterministically.
 
 ## Key architectural rule
 
