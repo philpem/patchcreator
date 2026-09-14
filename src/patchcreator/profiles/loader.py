@@ -8,7 +8,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Iterable, TYPE_CHECKING
 
-from pydantic import ValidationError
 from ruamel.yaml import YAML
 
 from .model import EffectiveProfile, ProfileConstraints, ProfileDefinition
@@ -68,10 +67,8 @@ def _read_profile(path: Path, *, source: str | None = None) -> ProfileDefinition
     try:
         raw = yaml.load(path.read_text(encoding="utf-8"))
         return ProfileDefinition.model_validate(raw)
-    except (OSError, ValidationError, Exception) as exc:
-        # ruamel's parser exceptions are intentionally wrapped as a stable API.
-        if isinstance(exc, ProfileError):
-            raise
+    except Exception as exc:
+        # Parser, I/O and validation exceptions are wrapped as a stable API.
         raise ProfileError(f"cannot load profile {source or path}: {exc}") from exc
 
 
