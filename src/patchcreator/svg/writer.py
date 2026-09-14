@@ -57,49 +57,131 @@ class RenderContext:
     target_group: ET.Element
 
 
-def _shape_element(parent: ET.Element, geometry: CanvasGeometry, *, inset: float = 0.0, **attrs: str) -> ET.Element:
+def _shape_element(
+    parent: ET.Element,
+    geometry: CanvasGeometry,
+    *,
+    inset: float = 0.0,
+    **attrs: str,
+) -> ET.Element:
     if geometry.shape == "circle":
         radius = geometry.width / 2.0 - inset
         if radius <= 0:
             raise ValueError("inset consumes the circular patch boundary")
         cx, cy = geometry.centre
-        return ET.SubElement(parent, q(SVG_NS, "circle"), {"cx": _fmt(cx), "cy": _fmt(cy), "r": _fmt(radius), **attrs})
+        return ET.SubElement(
+            parent,
+            q(SVG_NS, "circle"),
+            {"cx": _fmt(cx), "cy": _fmt(cy), "r": _fmt(radius), **attrs},
+        )
 
     rx = geometry.width / 2.0 - inset
     ry = geometry.height / 2.0 - inset
     if rx <= 0 or ry <= 0:
         raise ValueError("inset consumes the elliptical patch boundary")
     cx, cy = geometry.centre
-    return ET.SubElement(parent, q(SVG_NS, "ellipse"), {"cx": _fmt(cx), "cy": _fmt(cy), "rx": _fmt(rx), "ry": _fmt(ry), **attrs})
+    return ET.SubElement(
+        parent,
+        q(SVG_NS, "ellipse"),
+        {"cx": _fmt(cx), "cy": _fmt(cy), "rx": _fmt(rx), "ry": _fmt(ry), **attrs},
+    )
+
+
+def _add_shape_clip(
+    defs: ET.Element,
+    clip_id: str,
+    geometry: CanvasGeometry,
+    *,
+    inset: float,
+) -> None:
+    if defs.find(f"{{{SVG_NS}}}clipPath[@id='{clip_id}']") is not None:
+        return
+    clip = ET.SubElement(
+        defs,
+        q(SVG_NS, "clipPath"),
+        {"id": clip_id, "clipPathUnits": "userSpaceOnUse"},
+    )
+    _shape_element(clip, geometry, inset=inset)
 
 
 def _add_clip_paths(defs: ET.Element, geometry: CanvasGeometry) -> None:
-    patch_clip = ET.SubElement(defs, q(SVG_NS, "clipPath"), {"id": "clip-patch", "clipPathUnits": "userSpaceOnUse"})
-    _shape_element(patch_clip, geometry)
-
-    safe_clip = ET.SubElement(defs, q(SVG_NS, "clipPath"), {"id": "clip-safe-area", "clipPathUnits": "userSpaceOnUse"})
-    _shape_element(safe_clip, geometry, inset=geometry.safe_margin)
+    _add_shape_clip(defs, "clip-patch", geometry, inset=0.0)
+    _add_shape_clip(defs, "clip-safe-area", geometry, inset=geometry.safe_margin)
 
 
-def _clip_target(element: ElementSpec, design: DesignSpec) -> str | None:
+def _effective_clip(element: ElementSpec, design: DesignSpec) -> tuple[str, bool, float]:
     clip = element.clip
-    if clip is not None:
-        if not clip.enabled:
-            return None
-        target = clip.target
-    else:
+    if clip is None:
         target = design.settings.default_clip
+        enabled = True
+        inset = 0.0
+    else:
+        target = clip.target
+        enabled = clip.enabled
+        inset = float(clip.inset)
 
     if target == "inherit":
         target = design.settings.default_clip
-    if target == "none":
+    if target == "inherit":
+        raise ValueError("design default clip may not itself be 'inherit'")
+    return target, enabled, inset
+
+
+def _clip_id_for_element(
+    element: ElementSpec,
+    design: DesignSpec,
+    geometry: CanvasGeometry,
+    defs: ET.Element,
+    graph: SceneGraph,
+) -> str | None:
+    target, enabled, inset = _effective_clip(element, design)
+    if not enabled or target == "none":
         return None
+
     if target == "patch":
-        return "clip-patch"
+        if inset == 0.0:
+            return "clip-patch"
+        clip_id = f"clip-element-{element.id}"
+        _add_shape_clip(defs, clip_id, geometry, inset=inset)
+        return clip_id
+
     if target in {"safe-area", "safe_area"}:
-        return "clip-safe-area"
+        if inset == 0.0:
+            return "clip-safe-area"
+        clip_id = f"clip-element-{element.id}"
+        _add_shape_clip(
+            defs,
+            clip_id,
+            geometry,
+            inset=geometry.safe_margin + inset,
+        )
+        return clip_id
+
     if target.startswith("custom:"):
-        return f"clip-{target.split(':', 1)[1]}"
+        target_id = target.split(":", 1)[1]
+        if not target_id:
+            raise ValueError(f"empty custom clip target on element {element.id!r}")
+        if target_id == element.id:
+            raise ValueError(f"element {element.id!r} cannot clip itself")
+        if target_id not in graph.by_id:
+            raise ValueError(
+                f"unknown custom clip target {target_id!r} on element {element.id!r}"
+            )
+        if inset != 0.0:
+            raise ValueError(
+                f"custom clip {target!r} on element {element.id!r} cannot use inset/outset yet; "
+                "arbitrary-shape offsetting belongs to the geometry/boolean subsystem"
+            )
+        clip_id = f"clip-element-{element.id}"
+        if defs.find(f"{{{SVG_NS}}}clipPath[@id='{clip_id}']") is None:
+            clip = ET.SubElement(
+                defs,
+                q(SVG_NS, "clipPath"),
+                {"id": clip_id, "clipPathUnits": "userSpaceOnUse"},
+            )
+            ET.SubElement(clip, q(SVG_NS, "use"), {"href": f"#{target_id}"})
+        return clip_id
+
     raise ValueError(f"unknown clip target {target!r} on element {element.id!r}")
 
 
@@ -130,6 +212,7 @@ def _render_element(
     group: ET.Element,
     base_context: RenderContext,
     registry: ComponentRegistry,
+    graph: SceneGraph,
     warnings: list[str],
     allow_unsupported: bool,
 ) -> None:
@@ -138,12 +221,21 @@ def _render_element(
         attrs[q(INKSCAPE_NS, "label")] = element.label
     attrs[q(PATCHCREATOR_NS, "component")] = element.type
 
-    clip_target = _clip_target(element, base_context.design)
+    target, enabled, inset = _effective_clip(element, base_context.design)
     if element.clip is not None:
         attrs[q(PATCHCREATOR_NS, "clip-target")] = element.clip.target
-        attrs[q(PATCHCREATOR_NS, "clip-enabled")] = str(element.clip.enabled).lower()
-    if clip_target:
-        attrs["clip-path"] = f"url(#{clip_target})"
+        attrs[q(PATCHCREATOR_NS, "clip-enabled")] = str(enabled).lower()
+        attrs[q(PATCHCREATOR_NS, "clip-inset-mm")] = _fmt(inset)
+
+    clip_id = _clip_id_for_element(
+        element,
+        base_context.design,
+        base_context.geometry,
+        base_context.defs,
+        graph,
+    )
+    if clip_id:
+        attrs["clip-path"] = f"url(#{clip_id})"
 
     element_group = ET.SubElement(group, q(SVG_NS, "g"), attrs)
     if not element.visible:
@@ -168,7 +260,15 @@ def _render_element(
         renderer(element, context)
 
     for child in element.elements:
-        _render_element(child, element_group, context, registry, warnings, allow_unsupported)
+        _render_element(
+            child,
+            element_group,
+            context,
+            registry,
+            graph,
+            warnings,
+            allow_unsupported,
+        )
 
 
 def render_design(
@@ -178,7 +278,7 @@ def render_design(
     registry: ComponentRegistry | None = None,
 ) -> RenderResult:
     geometry = CanvasGeometry.from_spec(design.canvas)
-    SceneGraph.from_design(design)  # validates IDs before output begins
+    graph = SceneGraph.from_design(design)  # validates IDs before output begins
 
     root = ET.Element(
         q(SVG_NS, "svg"),
@@ -194,7 +294,11 @@ def render_design(
 
     if design.canvas.background:
         background = _palette_colour(design, design.canvas.background)
-        background_group = ET.SubElement(root, q(SVG_NS, "g"), {"id": "__canvas_background__"})
+        background_group = ET.SubElement(
+            root,
+            q(SVG_NS, "g"),
+            {"id": "__canvas_background__"},
+        )
         if design.settings.inkscape_metadata:
             background_group.set(q(INKSCAPE_NS, "groupmode"), "layer")
             background_group.set(q(INKSCAPE_NS, "label"), "Canvas background")
@@ -213,7 +317,15 @@ def render_design(
         if not layer.visible:
             layer_group.set("style", "display:none")
         for element in layer.elements:
-            _render_element(element, layer_group, base_context, registry, warnings, allow_unsupported)
+            _render_element(
+                element,
+                layer_group,
+                base_context,
+                registry,
+                graph,
+                warnings,
+                allow_unsupported,
+            )
 
     ET.indent(root, space="  ")
     xml = ET.tostring(root, encoding="unicode", xml_declaration=False)
