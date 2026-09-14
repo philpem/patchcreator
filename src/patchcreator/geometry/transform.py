@@ -112,7 +112,13 @@ class AffineTransform:
         )
 
     def to_svg(self) -> str:
-        """Return an SVG ``matrix(...)`` transform value."""
+        """Return an SVG ``matrix(...)`` transform value.
+
+        Tiny floating-point residues and signed zero are normalised so SVG
+        output is stable and easy to diff/read (for example ``-0`` becomes
+        ``0`` after inversion or rotation).
+        """
         values = (self.a, self.b, self.c, self.d, self.e, self.f)
-        formatted = " ".join(f"{value:.12g}" for value in values)
+        cleaned = (0.0 if abs(value) < 1e-12 else value for value in values)
+        formatted = " ".join(f"{value:.12g}" for value in cleaned)
         return f"matrix({formatted})"
