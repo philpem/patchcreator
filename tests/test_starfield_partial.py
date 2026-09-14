@@ -1,6 +1,8 @@
+from pathlib import Path
+
 import pytest
 
-from patchcreator.config.loader import loads_design
+from patchcreator.config.loader import load_design, loads_design
 from patchcreator.svg.writer import render_design
 
 
@@ -80,3 +82,13 @@ layers:
 
     with pytest.raises(ValueError, match="typo-does-not-exist.*does not exist"):
         render_design(design, allow_unsupported=True)
+
+
+def test_basic_round_patch_can_be_partially_rendered_while_components_are_missing():
+    example = Path(__file__).parents[1] / "examples" / "basic-round-patch.yaml"
+    result = render_design(load_design(example), allow_unsupported=True)
+
+    assert "<svg" in result.svg
+    assert any("skipping unsupported component 'earth'" in item for item in result.warnings)
+    assert any("path provider 'orbit-main' was skipped" in item for item in result.warnings)
+    assert "patchcreator:skipped=\"placement-dependency\"" in result.svg
