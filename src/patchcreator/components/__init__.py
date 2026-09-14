@@ -1,3 +1,3 @@
-from .registry import ComponentRegistry, UnsupportedComponentError
+from .registry import ComponentRegistry, ComponentResult, UnsupportedComponentError
 
-__all__ = ["ComponentRegistry", "UnsupportedComponentError"]
+__all__ = ["ComponentRegistry", "ComponentResult", "UnsupportedComponentError"]
