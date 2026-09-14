@@ -30,6 +30,9 @@ patchcreator = "patchcreator.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"patchcreator.profiles" = ["defaults/*.yaml", "defaults/*.yml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
