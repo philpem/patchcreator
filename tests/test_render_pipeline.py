@@ -35,11 +35,34 @@ def _group_renderer(element, context):
     return ComponentResult()
 
 
+def _deferred_renderer(element, context):
+    target_id = str(element.component_config()["target"])
+
+    def finalize(finalize_context):
+        target = finalize_context.graph.find(target_id)
+        bounds = target.resolved_bounds
+        assert bounds is not None
+        ET.SubElement(
+            finalize_context.render_context.target_group,
+            f"{{{SVG_NS}}}rect",
+            {
+                "x": str(bounds.min_x),
+                "y": str(bounds.min_y),
+                "width": str(bounds.width),
+                "height": str(bounds.height),
+            },
+        )
+        return [f"observed resolved target {target_id}"]
+
+    return ComponentResult(finalize=finalize)
+
+
 def _registry() -> ComponentRegistry:
     registry = ComponentRegistry()
     registry.register("marker", _marker_renderer)
     registry.register("line", _line_renderer)
     registry.register("group", _group_renderer)
+    registry.register("deferred", _deferred_renderer)
     return registry
 
 
@@ -207,3 +230,32 @@ layers:
     assert result.warnings
     assert group is not None
     assert "transform" not in group.attrib
+
+
+def test_post_placement_finalizer_can_inspect_later_sibling_geometry():
+    design = loads_design(
+        """
+version: 0.1
+canvas: {shape: circle, diameter: 80}
+layers:
+  - id: art
+    elements:
+      - id: observer
+        type: deferred
+        target: later
+        clip: {target: none}
+      - id: later
+        type: marker
+        radius: 2
+        clip: {target: none}
+        position: {mode: cartesian, x: 10, y: -5}
+"""
+    )
+    result = render_design(design, registry=_registry())
+    root = ET.fromstring(result.svg)
+    rect = root.find(
+        f".//{{{SVG_NS}}}g[@id='observer']/{{{SVG_NS}}}rect"
+    )
+    assert rect is not None
+    assert rect.attrib == {"x": "48.0", "y": "33.0", "width": "4.0", "height": "4.0"}
+    assert "observed resolved target later" in result.warnings

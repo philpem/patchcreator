@@ -13,6 +13,8 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from patchcreator.components.registry import (
+    ComponentFinalizeContext,
+    ComponentFinalizer,
     ComponentRegistry,
     ComponentResult,
     UnsupportedComponentError,
@@ -61,6 +63,9 @@ class RenderContext:
     svg_root: ET.Element
     defs: ET.Element
     target_group: ET.Element
+
+
+DeferredFinalizer = tuple[ComponentFinalizer, ElementSpec, RenderContext]
 
 
 def _shape_element(
@@ -258,6 +263,7 @@ def _render_element(
     graph: SceneGraph,
     svg_groups: dict[str, ET.Element],
     scene_paths: dict[str, ScenePathBinding],
+    finalizers: list[DeferredFinalizer],
     unsupported: set[str],
     warnings: list[str],
     allow_unsupported: bool,
@@ -296,12 +302,15 @@ def _render_element(
         warnings.append(message)
     else:
         result = renderer(element, context) or ComponentResult()
+        warnings.extend(result.warnings)
         node = graph.find(element.id)
         node.set_geometry(result.bounds, anchors=dict(result.anchors))
         for path_id, sampler in result.paths.items():
             if path_id in scene_paths:
                 raise ValueError(f"duplicate scene path id {path_id!r}")
             scene_paths[path_id] = ScenePathBinding(element.id, sampler)
+        if result.finalize is not None:
+            finalizers.append((result.finalize, element, context))
 
     for child in element.elements:
         _render_element(
@@ -312,10 +321,37 @@ def _render_element(
             graph,
             svg_groups,
             scene_paths,
+            finalizers,
             unsupported,
             warnings,
             allow_unsupported,
         )
+
+
+def _run_finalizers(
+    graph: SceneGraph,
+    finalizers: list[DeferredFinalizer],
+    warnings: list[str],
+) -> None:
+    for callback, element, render_context in finalizers:
+        node = graph.find(element.id)
+        before_bounds = node.local_bounds
+        before_anchors = dict(node.local_anchors)
+        produced = callback(
+            ComponentFinalizeContext(
+                element=element,
+                render_context=render_context,
+                graph=graph,
+                scene_node=node,
+            )
+        )
+        if node.local_bounds != before_bounds or node.local_anchors != before_anchors:
+            raise ValueError(
+                f"post-placement finalizer for {element.id!r} modified placement-critical geometry; "
+                "return conservative bounds/anchors from the prepare phase instead"
+            )
+        if produced:
+            warnings.extend(str(item) for item in produced)
 
 
 def _apply_scene_transforms(graph: SceneGraph, svg_groups: dict[str, ET.Element]) -> None:
@@ -386,6 +422,7 @@ def render_design(
     base_context = RenderContext(design, geometry, root, defs, root)
     svg_groups: dict[str, ET.Element] = {}
     scene_paths: dict[str, ScenePathBinding] = {}
+    finalizers: list[DeferredFinalizer] = []
     unsupported: set[str] = set()
 
     for layer in design.layers:
@@ -406,6 +443,7 @@ def render_design(
                 graph,
                 svg_groups,
                 scene_paths,
+                finalizers,
                 unsupported,
                 warnings,
                 allow_unsupported,
@@ -417,6 +455,7 @@ def render_design(
         paths=scene_paths,
         skip_node_ids=unsupported,
     ).resolve()
+    _run_finalizers(graph, finalizers, warnings)
     _apply_scene_transforms(graph, svg_groups)
     _apply_clips(design, geometry, defs, graph, svg_groups)
 

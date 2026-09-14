@@ -3,11 +3,15 @@
 The registry remains deliberately small and extensible. Component renderers
 write their geometry in the node's local SVG coordinate system and return the
 bounds/anchors/path samplers needed by the scene and placement passes.
+
+Components whose final SVG depends on resolved scene geometry may also return a
+post-placement finalizer. The prepare-time bounds/anchors remain authoritative
+for placement; finalizers are deliberately unable to replace them.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,12 +21,33 @@ from patchcreator.geometry.transform import Point
 
 
 @dataclass(frozen=True)
+class ComponentFinalizeContext:
+    """Context supplied to a component after scene placement is resolved.
+
+    Fields are typed loosely here to keep the component registry independent of
+    the SVG writer and scene modules. Components can inspect ``graph`` and
+    ``scene_node`` and append final editable geometry to
+    ``render_context.target_group``.
+    """
+
+    element: Any
+    render_context: Any
+    graph: Any
+    scene_node: Any
+
+
+ComponentFinalizer = Callable[[ComponentFinalizeContext], Iterable[str] | None]
+
+
+@dataclass(frozen=True)
 class ComponentResult:
     """Geometry metadata emitted alongside a component's editable SVG."""
 
     bounds: Bounds | None = None
     anchors: Mapping[str, Point] = field(default_factory=dict)
     paths: Mapping[str, PathSampler] = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
+    finalize: ComponentFinalizer | None = None
 
 
 ComponentRenderer = Callable[[Any, Any], ComponentResult | None]
