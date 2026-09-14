@@ -97,7 +97,7 @@ layers:
           at: 0.12
           orient: tangent
 
-  - id: title
+  - id: text-layer
     label: Text
     elements:
       - id: title
