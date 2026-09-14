@@ -58,8 +58,16 @@ class UnsupportedComponentError(ValueError):
 
 
 class ComponentRegistry:
-    def __init__(self) -> None:
+    def __init__(self, *, include_builtins: bool = True) -> None:
         self._renderers: dict[str, ComponentRenderer] = {}
+        if include_builtins:
+            # Delayed import avoids a module cycle: built-in component modules
+            # use ComponentResult from this module. Third-party/test registries
+            # can request an empty registry with include_builtins=False.
+            from .stars import render_star, render_starfield
+
+            self.register("star", render_star)
+            self.register("starfield", render_starfield)
 
     def register(self, component_type: str, renderer: ComponentRenderer) -> None:
         if component_type in self._renderers:
