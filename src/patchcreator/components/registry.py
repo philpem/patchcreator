@@ -29,9 +29,10 @@ class ComponentFinalizeContext:
     ``scene_node`` and append final editable geometry to
     ``render_context.target_group``.
 
-    ``unsupported_node_ids`` identifies nodes deliberately skipped by a partial
-    render. Finalizers may use this to degrade gracefully for dependencies on
-    unsupported components without masking genuine missing/invalid geometry in
+    ``skipped_node_ids`` identifies nodes deliberately omitted from placement in
+    a partial render, either because their component type is unsupported or
+    because their placement depends on another skipped node/path. Finalizers may
+    use this to degrade gracefully without masking genuine invalid geometry in
     strict renders.
     """
 
@@ -39,7 +40,7 @@ class ComponentFinalizeContext:
     render_context: Any
     graph: Any
     scene_node: Any
-    unsupported_node_ids: frozenset[str] = frozenset()
+    skipped_node_ids: frozenset[str] = frozenset()
 
 
 ComponentFinalizer = Callable[[ComponentFinalizeContext], Iterable[str] | None]
