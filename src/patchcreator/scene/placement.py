@@ -14,7 +14,7 @@ from patchcreator.config.schema import (
     RelativePosition,
 )
 from patchcreator.geometry.patch import CanvasGeometry
-from patchcreator.geometry.paths import PathSampler
+from patchcreator.geometry.paths import PathSample, PathSampler
 from patchcreator.geometry.transform import AffineTransform, Point
 from patchcreator.geometry.units import (
     parse_angle_degrees,
@@ -47,6 +47,17 @@ class PlacementFrame:
             raise ValueError("coordinate-frame reference radius must be positive")
 
 
+@dataclass(frozen=True)
+class ScenePathBinding:
+    """A path sampler expressed in the local coordinates of a scene node."""
+
+    owner_id: str
+    sampler: PathSampler
+
+
+PathSource = PathSampler | ScenePathBinding
+
+
 class PlacementResolver:
     """Resolve declarative positions into each scene node's local transform.
 
@@ -56,9 +67,9 @@ class PlacementResolver:
     patch coordinates, while ``frame: {origin: self, ...}`` establishes a local
     frame that moves and rotates with a group.
 
-    Path samplers supplied here operate in document coordinates. Future
-    trajectory/orbit components can expose their generated paths through this
-    same protocol without coupling placement to SVG path syntax.
+    Plain path samplers operate in document coordinates. ``ScenePathBinding``
+    attaches a local path to its owning scene node and is transformed into
+    document coordinates after that owner has been placed.
     """
 
     def __init__(
@@ -66,11 +77,13 @@ class PlacementResolver:
         graph: SceneGraph,
         geometry: CanvasGeometry,
         *,
-        paths: Mapping[str, PathSampler] | None = None,
+        paths: Mapping[str, PathSource] | None = None,
+        skip_node_ids: set[str] | frozenset[str] | None = None,
     ) -> None:
         self.graph = graph
         self.geometry = geometry
         self.paths = dict(paths or {})
+        self.skip_node_ids = frozenset(skip_node_ids or ())
         self._state: dict[str, str] = {}
         self._stack: list[str] = []
         cx, cy = geometry.centre
@@ -88,8 +101,6 @@ class PlacementResolver:
             if node is not self.graph.root:
                 self._ensure_placed(node)
 
-        # Re-run the generic scene pass to aggregate final bounds/anchors from
-        # the local transforms established above.
         self.graph.resolve()
         return self.graph
 
@@ -122,7 +133,7 @@ class PlacementResolver:
 
             parent_world = parent.world_transform
             position = getattr(node.config, "position", None)
-            if position is not None:
+            if position is not None and node.id not in self.skip_node_ids:
                 node.local_transform = self._position_transform(
                     node, position, inherited_frame, parent_world
                 )
@@ -233,22 +244,10 @@ class PlacementResolver:
             desired_world = frame.to_world.with_translation(point) @ anchor_shift
 
         elif isinstance(position, PathPosition):
-            try:
-                path = self.paths[position.path]
-            except KeyError as exc:
-                raise PlacementError(
-                    f"cannot position {node.id!r}: unknown path {position.path!r}"
-                ) from exc
-            fraction = _parse_path_fraction(position.at)
-            try:
-                sample = path.sample(fraction)
-            except ValueError as exc:
-                raise PlacementError(
-                    f"cannot position {node.id!r} on path {position.path!r}: {exc}"
-                ) from exc
+            sample = self._sample_path(node, position.path, position.at)
             tx, ty = _unit_vector(sample.tangent, node.id, position.path)
             normal_offset = parse_length_mm(position.normal_offset)
-            normal = (-ty, tx)  # positive is the visual right side in SVG y-down space
+            normal = (-ty, tx)
             point = (
                 sample.point[0] + normal[0] * normal_offset,
                 sample.point[1] + normal[1] * normal_offset,
@@ -260,7 +259,7 @@ class PlacementResolver:
                 basis = frame.to_world.with_translation(point)
             desired_world = basis @ anchor_shift
 
-        else:  # pragma: no cover - Pydantic's discriminated union prevents this
+        else:  # pragma: no cover
             raise PlacementError(f"unsupported placement mode on {node.id!r}")
 
         try:
@@ -270,14 +269,40 @@ class PlacementResolver:
                 f"cannot position {node.id!r} beneath a singular parent transform"
             ) from exc
 
+    def _sample_path(self, node: SceneNode, path_id: str, at: float | str) -> PathSample:
+        try:
+            path = self.paths[path_id]
+        except KeyError as exc:
+            raise PlacementError(
+                f"cannot position {node.id!r}: unknown path {path_id!r}"
+            ) from exc
+        fraction = _parse_path_fraction(at)
+        try:
+            if isinstance(path, ScenePathBinding):
+                owner = self.graph.find(path.owner_id)
+                self._ensure_placed(owner)
+                local = path.sampler.sample(fraction)
+                return PathSample(
+                    point=owner.world_transform.apply(local.point),
+                    tangent=owner.world_transform.apply_vector(local.tangent),
+                )
+            return path.sample(fraction)
+        except ValueError as exc:
+            raise PlacementError(
+                f"cannot position {node.id!r} on path {path_id!r}: {exc}"
+            ) from exc
+
 
 def _parse_path_fraction(value: float | str) -> float:
     if isinstance(value, str):
         text = value.strip()
-        if text.endswith("%"):
-            fraction = float(text[:-1]) / 100.0
-        else:
-            fraction = float(text)
+        try:
+            if text.endswith("%"):
+                fraction = float(text[:-1]) / 100.0
+            else:
+                fraction = float(text)
+        except ValueError as exc:
+            raise PlacementError(f"invalid path position {value!r}") from exc
     else:
         fraction = float(value)
     if not 0.0 <= fraction <= 1.0:
