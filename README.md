@@ -13,12 +13,13 @@ The project deliberately targets patch-like composition rather than replacing a 
 
 ## Current status
 
-Early implementation. The repository now contains the YAML model/loader, the first scene-graph structures, physical patch/safe-area geometry and an editable SVG writer capable of producing a circular or elliptical canvas and border. Most procedural components and embroidery validation are still tracked as roadmap issues.
+Early implementation. The repository contains the YAML model/loader, scene graph and placement system, physical patch/safe-area geometry, editable/clipped SVG output, profile handling, semantic stars and deterministic decorative starfields. Earth, trajectory/text components and embroidery validation are still tracked as roadmap issues.
 
 See:
 
 - [`docs/specification.md`](docs/specification.md) — design requirements and behaviour;
 - [`docs/architecture.md`](docs/architecture.md) — proposed Python/scene-graph architecture;
+- [`docs/external-data.md`](docs/external-data.md) — third-party dataset acquisition/cache policy;
 - [`docs/initial-issues.md`](docs/initial-issues.md) — implementation backlog;
 - [`examples/minimal-patch.yaml`](examples/minimal-patch.yaml) — currently renderable example;
 - [`examples/basic-round-patch.yaml`](examples/basic-round-patch.yaml) — target end-to-end procedural example.
@@ -52,9 +53,13 @@ patchcreator render design.yaml
 patchcreator check artwork.svg
 patchcreator normalize asset.svg
 patchcreator profiles list
+patchcreator data list
+patchcreator data fetch natural-earth-land-110m
 ```
 
-`render` is implemented first; the other commands are present as stable CLI entry points while their underlying subsystems are built.
+`render`, profile inspection and external-data management are implemented. `check` and `normalize` are present as stable CLI entry points while their underlying subsystems are built.
+
+Third-party datasets are never silently downloaded or committed into the PatchCreator source tree. See [`docs/external-data.md`](docs/external-data.md) for cache locations, source declarations and the explicit fetch workflow.
 
 ## Design priorities
 

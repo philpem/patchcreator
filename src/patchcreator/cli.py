@@ -13,6 +13,14 @@ import sys
 from patchcreator import __version__
 from patchcreator.components import UnsupportedComponentError
 from patchcreator.config.loader import DesignLoadError, load_design
+from patchcreator.data import (
+    DataSourceError,
+    fetch_dataset,
+    is_dataset_installed,
+    load_data_catalog,
+    require_dataset,
+    resolve_data_root,
+)
 from patchcreator.profiles import ProfileError, load_profile_catalog, resolve_profile
 from patchcreator.svg.writer import write_design_svg
 
@@ -100,12 +108,57 @@ def _cmd_profiles_effective(args: argparse.Namespace) -> int:
     return 0
 
 
+def _data_root(args: argparse.Namespace) -> Path:
+    return resolve_data_root(args.data_dir)
+
+
+def _cmd_data_list(args: argparse.Namespace) -> int:
+    try:
+        catalog = load_data_catalog()
+        root = _data_root(args)
+    except DataSourceError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    for source in catalog.entries():
+        status = "installed" if is_dataset_installed(source, root=root) else "missing"
+        print(f"{status:9} {source.name}\tversion {source.version}\t{source.url}")
+    return 0
+
+
+def _cmd_data_fetch(args: argparse.Namespace) -> int:
+    try:
+        path = fetch_dataset(args.name, root=_data_root(args), force=args.force)
+    except (DataSourceError, OSError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
+def _cmd_data_path(args: argparse.Namespace) -> int:
+    try:
+        path = require_dataset(args.name, root=_data_root(args))
+    except DataSourceError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
 def _add_profile_path_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--profile-path",
         action="append",
         metavar="DIR",
         help="additional profile directory; may be specified more than once",
+    )
+
+
+def _add_data_dir_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--data-dir",
+        metavar="DIR",
+        help="external data cache root (overrides PATCHCREATOR_DATA_DIR/XDG cache)",
     )
 
 
@@ -149,6 +202,24 @@ def build_parser() -> argparse.ArgumentParser:
     profile_effective.add_argument("design")
     _add_profile_path_argument(profile_effective)
     profile_effective.set_defaults(func=_cmd_profiles_effective)
+
+    data = subparsers.add_parser("data", help="manage explicitly downloaded external datasets")
+    data_sub = data.add_subparsers(dest="data_command", required=True)
+
+    data_list = data_sub.add_parser("list", help="list known datasets and installation state")
+    _add_data_dir_argument(data_list)
+    data_list.set_defaults(func=_cmd_data_list)
+
+    data_fetch = data_sub.add_parser("fetch", help="download and install one named dataset")
+    data_fetch.add_argument("name")
+    data_fetch.add_argument("--force", action="store_true", help="replace an existing cached copy")
+    _add_data_dir_argument(data_fetch)
+    data_fetch.set_defaults(func=_cmd_data_fetch)
+
+    data_path = data_sub.add_parser("path", help="print the installed path for one dataset")
+    data_path.add_argument("name")
+    _add_data_dir_argument(data_path)
+    data_path.set_defaults(func=_cmd_data_path)
 
     return parser
 

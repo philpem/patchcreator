@@ -1,0 +1,15 @@
+sources:
+  natural-earth-land-110m:
+    description: Natural Earth 1:110m land polygons for patch-scale Earth rendering
+    version: "4.0.0"
+    url: https://naturalearth.s3.amazonaws.com/110m_physical/ne_110m_land.zip
+    homepage: https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/
+    licence: Public domain
+    licence_url: https://www.naturalearthdata.com/about/terms-of-use/
+    attribution: Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com.
+    archive: zip
+    required_members:
+      - ne_110m_land.shp
+      - ne_110m_land.shx
+      - ne_110m_land.dbf
+      - ne_110m_land.prj
