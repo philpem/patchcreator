@@ -19,7 +19,7 @@ from patchcreator.components.registry import (
     ComponentResult,
     UnsupportedComponentError,
 )
-from patchcreator.config.schema import DesignSpec, ElementSpec
+from patchcreator.config.schema import DesignSpec, ElementSpec, PathPosition, RelativePosition
 from patchcreator.geometry.patch import CanvasGeometry
 from patchcreator.geometry.primitives import Bounds
 from patchcreator.geometry.transform import AffineTransform
@@ -328,11 +328,63 @@ def _render_element(
         )
 
 
+def _expand_partial_skip_set(
+    graph: SceneGraph,
+    scene_paths: dict[str, ScenePathBinding],
+    unsupported: set[str],
+    svg_groups: dict[str, ET.Element],
+    warnings: list[str],
+) -> set[str]:
+    """Skip placement nodes whose dependencies were skipped in a partial render.
+
+    Genuine missing references remain errors: propagation occurs only when a
+    path/target corresponds to a node already known to have been skipped.
+    """
+    skipped = set(unsupported)
+    reasons: dict[str, str] = {}
+
+    changed = True
+    while changed:
+        changed = False
+        for node in graph.root.walk():
+            if node.id in skipped or not isinstance(node.config, ElementSpec):
+                continue
+            position = node.config.position
+            reason: str | None = None
+            if isinstance(position, RelativePosition) and position.target in skipped:
+                reason = f"relative target {position.target!r} was skipped"
+            elif (
+                isinstance(position, PathPosition)
+                and position.path not in scene_paths
+                and position.path in skipped
+            ):
+                reason = f"path provider {position.path!r} was skipped"
+
+            if reason is not None:
+                skipped.add(node.id)
+                reasons[node.id] = reason
+                changed = True
+
+    for node_id, reason in reasons.items():
+        group = svg_groups.get(node_id)
+        if group is not None:
+            current_style = group.get("style", "").rstrip(";")
+            group.set("style", f"{current_style + ';' if current_style else ''}display:none")
+            group.set(q(PATCHCREATOR_NS, "skipped"), "placement-dependency")
+        warnings.append(
+            f"skipping placement-dependent component {node_id!r} in partial render: {reason}"
+        )
+
+    return skipped
+
+
 def _run_finalizers(
     graph: SceneGraph,
     finalizers: list[DeferredFinalizer],
+    skipped: set[str],
     warnings: list[str],
 ) -> None:
+    skipped_node_ids = frozenset(skipped)
     for callback, element, render_context in finalizers:
         node = graph.find(element.id)
         before_bounds = node.local_bounds
@@ -343,6 +395,7 @@ def _run_finalizers(
                 render_context=render_context,
                 graph=graph,
                 scene_node=node,
+                skipped_node_ids=skipped_node_ids,
             )
         )
         if node.local_bounds != before_bounds or node.local_anchors != before_anchors:
@@ -449,13 +502,20 @@ def render_design(
                 allow_unsupported,
             )
 
+    skipped = _expand_partial_skip_set(
+        graph,
+        scene_paths,
+        unsupported,
+        svg_groups,
+        warnings,
+    )
     PlacementResolver(
         graph,
         geometry,
         paths=scene_paths,
-        skip_node_ids=unsupported,
+        skip_node_ids=skipped,
     ).resolve()
-    _run_finalizers(graph, finalizers, warnings)
+    _run_finalizers(graph, finalizers, skipped, warnings)
     _apply_scene_transforms(graph, svg_groups)
     _apply_clips(design, geometry, defs, graph, svg_groups)
 
