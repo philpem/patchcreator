@@ -10,7 +10,9 @@ The current validator checks:
 - minimum physical dimension of filled features;
 - minimum area of each connected filled island, including tiny detached
   subpaths within a much larger SVG object;
-- minimum positive edge-to-edge clearance between visible filled geometry.
+- minimum positive edge-to-edge clearance between visible filled geometry;
+- positive-area overlap between logical filled objects, with PatchCreator's
+  explicit overlap policies taken into account.
 
 ```text
 patchcreator check artwork.svg
@@ -34,16 +36,21 @@ area currently come from the effective profile.
 
 Exit status is:
 
-- `0`: validation completed with no findings, or the selected profile disables validation;
-- `1`: validation completed and found embroidery concerns;
+- `0`: validation completed with no warning/error findings, or the selected profile disables validation;
+- `1`: validation completed and found warning/error embroidery concerns;
 - `2`: input/profile/configuration error.
+
+Informational findings, such as an overlap explicitly marked for future
+`knockout` handling, are printed but do not make `patchcreator check` fail.
 
 Findings are structured in the Python API (`patchcreator.validation.Finding`)
 and contain a stable code, severity, object ID/tag where available, measured
 physical value and threshold. Pairwise findings can also name the related SVG
-object. Area findings use mm². Feature findings carry physical bounds, and gap
-findings carry the nearest pair of physical points; this is intentionally useful
-to the future visual debug layer.
+object and carry each side's overlap policy. Area findings use mm². Feature
+findings carry physical bounds, gap findings carry the nearest pair of physical
+points, and overlap findings carry the physical intersection bounds plus a point
+inside that intersection; this is intentionally useful to the visual debug
+layer.
 
 ## Physical units
 
@@ -79,19 +86,50 @@ visible filled SVG elements. It also checks disconnected polygon components
 inside a single compound SVG object. Findings identify both participating object
 IDs when they are available and record the nearest points in millimetres.
 Touching or overlapping geometry has zero distance and is deliberately not
-reported as a gap; that belongs to the overlap validator so the checks do not
-produce duplicate findings.
+reported as a gap.
 
-The current gap pass measures filled geometry, not the outside edge of a stroked
-outline. Minimum stroke width is checked separately. This distinction keeps the
-analysis deterministic and avoids pretending that an SVG stroke already implies
-a particular embroidery stitch expansion.
+## Overlap policies
+
+PatchCreator preserves every component's authoring `overlap_policy` in the SVG
+as `data-patchcreator-overlap-policy`, so an independently checked or
+Inkscape-edited master can retain the intended compositing semantics. Geometry
+inside one PatchCreator component is unioned before pairwise diagnostics, which
+avoids treating deliberate internal layering inside a reusable asset as an
+inter-object embroidery problem.
+
+The policies are interpreted as follows:
+
+- `background`: overlap is intentional background coverage and is suppressed;
+- `allow`: ordinary overlap is explicitly permitted;
+- `warn`: positive-area overlap produces `overlap-thread-buildup`;
+- `avoid`: any remaining positive-area overlap produces the stronger
+  `overlap-avoid-violation` finding;
+- `knockout`: overlap produces informational `overlap-knockout-pending`, marking
+  geometry that a future compatibility/export pass is expected to remove from
+  the covered lower object.
+
+When checking a plain SVG without PatchCreator metadata, each filled SVG object
+is treated as `warn` by default. The generated canvas background is recognised
+as `background`, so it does not produce a warning against every foreground
+object.
+
+Overlap diagnostics are report-only: they do not rewrite the master SVG. This is
+important because an SVG's visual paint order alone does not tell a digitiser
+whether lower geometry will actually be stitched. The `knockout` metadata and
+intersection geometry are deliberately structured so the later compatibility
+export can make that operation explicit rather than silently changing the
+master artwork.
+
+The current gap and overlap passes measure filled geometry, not the outside edge
+of a stroked outline. Minimum stroke width is checked separately. This
+distinction keeps the analysis deterministic and avoids pretending that an SVG
+stroke already implies a particular embroidery stitch expansion.
 
 Default non-zero winding paths are currently conservatively unioned. This can
 overestimate filled area for unusual compound-hole constructions, which can in
-turn hide a gap that exists only inside such a hole. Even-odd paths are handled
-explicitly. Exact non-zero winding and clip reconstruction can be tightened as
-the overlap/knockout work develops.
+turn hide a gap or enlarge an overlap around such holes. Even-odd paths are
+handled explicitly. Exact non-zero winding and clip reconstruction can be
+tightened as the compatibility-export/knockout work develops.
 
 Hidden content, transparent paint and geometry in definitions, masks, clip
 paths and markers are ignored. CSS stylesheets and percentage stroke widths are
