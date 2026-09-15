@@ -8,10 +8,12 @@ the format without requiring edits to the core schema dispatcher.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
+from patchcreator.palette import resolve_palette_map
 from patchcreator.profiles.model import ProfileConstraints
 
 
@@ -190,9 +192,22 @@ class DesignSpec(StrictModel):
     settings: SettingsSpec = Field(default_factory=SettingsSpec)
     layers: list[LayerSpec] = Field(default_factory=list)
 
+    _source_dir: Path | None = PrivateAttr(default=None)
+
     @model_validator(mode="after")
-    def validate_version(self) -> "DesignSpec":
+    def validate_design(self) -> "DesignSpec":
         version = str(self.version)
         if version != "0.1":
             raise ValueError(f"unsupported design version {version!r}; expected '0.1'")
+        # Resolve derived values once so existing and third-party renderers only
+        # need to deal with ordinary CSS colour strings.
+        self.palette = resolve_palette_map(self.palette)
         return self
+
+    @property
+    def source_dir(self) -> Path | None:
+        """Directory containing the loaded YAML design, if it came from a file."""
+        return self._source_dir
+
+    def set_source_dir(self, path: str | Path | None) -> None:
+        self._source_dir = Path(path).resolve() if path is not None else None
