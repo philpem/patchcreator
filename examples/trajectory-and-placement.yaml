@@ -1,0 +1,161 @@
+version: 0.1
+units: mm
+
+canvas:
+  shape: circle
+  diameter: 80
+  background: space
+  safe_margin:
+    fixed: 3
+
+profile:
+  intent: standard-patch
+
+metadata:
+  title: "Trajectory and Placement Example"
+
+palette:
+  space: "#060810"
+  gold: "#f4c542"
+  blue: "#4ba3ff"
+  white: "#ffffff"
+  halo: "#111827"
+
+settings:
+  default_clip: safe-area
+  inkscape_metadata: true
+  construction_guides: true
+  embroidery_safety: true
+
+layers:
+  - id: background
+    label: Stars
+    elements:
+      - id: decorative-stars
+        type: starfield
+        seed: 424242
+        count: 18
+        glyphs: [dot, four-point, four-point-narrow]
+        size_range: [0.8, 1.8]
+        region:
+          type: annular-sector
+          inner_radius: 0.30r
+          outer_radius: 0.88r
+          angle_start: 250deg
+          angle_end: 110deg
+        minimum_separation: 1.2
+        clip:
+          target: safe-area
+        overlap_policy: avoid
+
+  - id: paths
+    label: Trajectories
+    elements:
+      - id: transfer
+        type: trajectory
+        start: [-24, 12]
+        segments:
+          - line: [-14, 6]
+          - cubic:
+              control1: [-4, -12]
+              control2: [12, -14]
+              to: [24, 4]
+        stroke:
+          colour: blue
+          width: 0.9
+          dash: [2.5, 1.2]
+        halo:
+          colour: halo
+          width: 2.0
+        arrowheads: end
+        position:
+          mode: cartesian
+          x: 0
+          y: 0
+          self_anchor: origin
+        clip:
+          target: none
+        overlap_policy: allow
+
+      - id: traveller
+        type: star
+        glyph: five-point
+        size: 3.2
+        fill: gold
+        position:
+          mode: path
+          path: transfer
+          at: 58%
+          orient: tangent
+          normal_offset: 1.5
+        clip:
+          target: none
+        overlap_policy: allow
+
+      - id: rendezvous-orbit
+        type: orbit
+        radius_x: 15
+        radius_y: 6
+        rotation: 18deg
+        phase: 35deg
+        stroke:
+          colour: gold
+          width: 0.7
+        position:
+          mode: cartesian
+          x: 13
+          y: -8
+          self_anchor: orbit-centre
+        clip:
+          target: none
+        overlap_policy: allow
+
+      - id: orbit-marker
+        type: star
+        glyph: dot
+        size: 2.2
+        fill: white
+        position:
+          mode: path
+          path: rendezvous-orbit
+          at: 25%
+          orient: tangent
+        clip:
+          target: none
+        overlap_policy: allow
+
+  - id: text
+    label: Text
+    elements:
+      - id: top-title
+        type: text
+        text: "TRAJECTORY / PATH PLACEMENT"
+        position:
+          mode: cartesian
+          x: 0
+          y: 0
+          self_anchor: origin
+        layout:
+          type: top-arc
+          radius: 33
+          start_angle: 305deg
+          end_angle: 55deg
+        font:
+          family: "DejaVu Sans"
+          size: 4.2
+          weight: 700
+          tracking: auto
+        fill: white
+        clip:
+          target: none
+        overlap_policy: allow
+
+  - id: border-layer
+    label: Border
+    elements:
+      - id: border
+        type: border
+        inset: 1.2
+        stroke: {colour: gold, width: 1.4}
+        clip: {target: none}
+        overlap_policy: allow

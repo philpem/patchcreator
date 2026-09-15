@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="80mm" height="80mm" viewBox="0 0 80 80">
+  <!-- Deliberately problematic artwork. Run patchcreator check on this file
+       and request a debug SVG to see the removable validation overlay. -->
+
+  <!-- Minimum-stroke-width finding: 0.30 mm < standard-patch 0.60 mm. -->
+  <path id="thin-route" d="M 8,68 C 24,52 50,58 70,66"
+        fill="none" stroke="#2f6fcd" stroke-width="0.30"/>
+
+  <!-- Small-feature and detached-island findings. -->
+  <rect id="tiny-island" x="6" y="7" width="0.5" height="0.5"
+        fill="#f3c344"/>
+
+  <!-- Edge-to-edge gap is 0.40 mm, below the standard 0.60 mm threshold. -->
+  <rect id="gap-left" x="13" y="16" width="8" height="8" fill="#f3c344"/>
+  <rect id="gap-right" x="21.4" y="16" width="8" height="8" fill="#ffffff"/>
+
+  <!-- Ordinary warn/warn overlap: 30 mm² of lower geometry is covered. -->
+  <g id="overlap-lower" data-patchcreator-overlap-policy="warn">
+    <rect x="36" y="15" width="10" height="10" fill="#2f6fcd"/>
+  </g>
+  <g id="overlap-upper" data-patchcreator-overlap-policy="warn">
+    <rect x="43" y="15" width="10" height="10" fill="#f28c28"/>
+  </g>
+
+  <!-- An explicit knockout is informational rather than a failing warning.
+       Compatibility export currently keeps this intent explicit instead of
+       silently applying a destructive boolean operation. -->
+  <g id="knockout-lower" data-patchcreator-overlap-policy="knockout">
+    <circle cx="27" cy="43" r="7" fill="#6b7280"/>
+  </g>
+  <g id="knockout-upper" data-patchcreator-overlap-policy="allow">
+    <circle cx="32" cy="43" r="5" fill="#ffffff"/>
+  </g>
+</svg>

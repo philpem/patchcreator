@@ -1,0 +1,135 @@
+version: 0.1
+units: mm
+
+canvas:
+  shape: circle
+  diameter: 80
+  background: space
+  safe_margin:
+    fixed: 3
+
+profile:
+  intent: standard-patch
+
+metadata:
+  title: "Live Text Layout Example"
+
+palette:
+  space: "#05060a"
+  gold: "#f3c344"
+  white: "#ffffff"
+  guide: "#3b82f6"
+
+settings:
+  default_clip: safe-area
+  inkscape_metadata: true
+  construction_guides: true
+  embroidery_safety: true
+
+layers:
+  - id: guide-paths
+    label: Guide paths
+    elements:
+      - id: text-route
+        type: trajectory
+        start: [-22, 2]
+        segments:
+          - cubic:
+              control1: [-10, -10]
+              control2: [10, -10]
+              to: [22, 2]
+        stroke:
+          colour: guide
+          width: 0.5
+          dash: [1.5, 1.0]
+        position:
+          mode: cartesian
+          x: 0
+          y: 0
+          self_anchor: origin
+        clip: {target: none}
+        overlap_policy: allow
+
+  - id: text
+    label: Editable live text
+    elements:
+      - id: top-title
+        type: text
+        text: "TOP ARC"
+        position: {mode: cartesian, x: 0, y: 0, self_anchor: origin}
+        layout:
+          type: top-arc
+          radius: 32
+          start_angle: 300deg
+          end_angle: 60deg
+        font:
+          family: "DejaVu Sans"
+          size: 5.0
+          weight: 700
+          tracking: auto
+        fill: gold
+        clip: {target: none}
+        overlap_policy: allow
+
+      - id: bottom-title
+        type: text
+        text: "BOTTOM ARC"
+        position: {mode: cartesian, x: 0, y: 0, self_anchor: origin}
+        layout:
+          type: bottom-arc
+          radius: 32
+          start_angle: 235deg
+          end_angle: 125deg
+        font:
+          family: "DejaVu Sans"
+          size: 5.0
+          weight: 700
+          tracking: auto
+        fill: gold
+        clip: {target: none}
+        overlap_policy: allow
+
+      - id: route-label
+        type: text
+        text: "TEXT FOLLOWS A PROCEDURAL PATH"
+        layout:
+          type: path
+          path: text-route
+          length: 47
+          bounds: [-24, -12, 24, 5]
+          fit: 82%
+        font:
+          family: "DejaVu Sans"
+          size: 3.6
+          tracking: auto
+        fill: white
+        clip: {target: none}
+        overlap_policy: allow
+
+      - id: lower-band
+        type: text
+        text: "AUTO-FITTED BAND"
+        position: {mode: cartesian, x: 0, y: 0, self_anchor: origin}
+        layout:
+          type: lower-band
+          offset: 18
+          width: 44
+          fit: 90%
+        font:
+          family: "DejaVu Sans"
+          size: 4.0
+          weight: 600
+          tracking: auto
+        fill: white
+        clip: {target: none}
+        overlap_policy: allow
+
+  - id: border-layer
+    label: Border
+    elements:
+      - id: border
+        type: border
+        inset: 1.2
+        stroke: {colour: gold, width: 1.4}
+        clip: {target: none}
+        overlap_policy: allow
