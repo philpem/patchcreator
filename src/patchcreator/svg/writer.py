@@ -25,6 +25,7 @@ from patchcreator.geometry.primitives import Bounds
 from patchcreator.geometry.transform import AffineTransform
 from patchcreator.scene.graph import SceneGraph
 from patchcreator.scene.placement import PlacementResolver, ScenePathBinding
+from patchcreator.svg.custom_clip import offset_group_svg_path
 
 SVG_NS = "http://www.w3.org/2000/svg"
 INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
@@ -148,12 +149,65 @@ def _effective_clip(element: ElementSpec, design: DesignSpec) -> tuple[str, bool
     return target, enabled, inset
 
 
+def _add_offset_custom_clip(
+    *,
+    clip_id: str,
+    element: ElementSpec,
+    target_id: str,
+    inset: float,
+    defs: ET.Element,
+    graph: SceneGraph,
+    svg_groups: dict[str, ET.Element],
+) -> None:
+    """Create an editable path representing a physically offset target silhouette."""
+    if defs.find(f"{{{SVG_NS}}}clipPath[@id='{clip_id}']") is not None:
+        return
+
+    node = graph.find(element.id)
+    target_node = graph.find(target_id)
+    target_group = svg_groups.get(target_id)
+    if target_group is None:
+        raise ValueError(f"custom clip target {target_id!r} has no rendered SVG group")
+
+    try:
+        path_data = offset_group_svg_path(target_group, inset_mm=inset)
+    except ValueError as exc:
+        raise ValueError(
+            f"cannot offset custom clip {target_id!r} for element {element.id!r}: {exc}"
+        ) from exc
+
+    # The derived path is expressed in target-node local coordinates. Move it
+    # directly into the clipped element's local frame. Unlike the zero-offset
+    # <use> form, this path does not include the target group's placement
+    # transform implicitly, hence target_node.world_transform is used here.
+    relative = node.world_transform.inverse() @ target_node.world_transform
+    clip = ET.SubElement(
+        defs,
+        q(SVG_NS, "clipPath"),
+        {
+            "id": clip_id,
+            "clipPathUnits": "userSpaceOnUse",
+            q(PATCHCREATOR_NS, "derived-from"): target_id,
+            q(PATCHCREATOR_NS, "clip-offset-mm"): _fmt(inset),
+        },
+    )
+    attrs = {
+        "d": path_data,
+        "clip-rule": "evenodd",
+        "fill-rule": "evenodd",
+    }
+    if relative != AffineTransform.identity():
+        attrs["transform"] = relative.to_svg()
+    ET.SubElement(clip, q(SVG_NS, "path"), attrs)
+
+
 def _clip_id_for_element(
     element: ElementSpec,
     design: DesignSpec,
     geometry: CanvasGeometry,
     defs: ET.Element,
     graph: SceneGraph,
+    svg_groups: dict[str, ET.Element],
 ) -> str | None:
     target, enabled, inset = _effective_clip(element, design)
     if not enabled or target == "none":
@@ -200,18 +254,27 @@ def _clip_id_for_element(
             raise ValueError(
                 f"unknown custom clip target {target_id!r} on element {element.id!r}"
             )
-        if inset != 0.0:
-            raise ValueError(
-                f"custom clip {target!r} on element {element.id!r} cannot use inset/outset yet; "
-                "arbitrary-shape offsetting belongs to the geometry/boolean subsystem"
-            )
 
         target_node = graph.find(target_id)
         if target_node.parent is None:
             raise ValueError(f"custom clip target {target_id!r} has no scene parent")
 
-        relative = world_inverse @ target_node.parent.world_transform
         clip_id = f"clip-element-{element.id}"
+        if inset != 0.0:
+            _add_offset_custom_clip(
+                clip_id=clip_id,
+                element=element,
+                target_id=target_id,
+                inset=inset,
+                defs=defs,
+                graph=graph,
+                svg_groups=svg_groups,
+            )
+            return clip_id
+
+        # Preserve the exact source hierarchy for zero-offset custom clips. The
+        # <use> remains reversible/editable and follows later edits to the target.
+        relative = world_inverse @ target_node.parent.world_transform
         if defs.find(f"{{{SVG_NS}}}clipPath[@id='{clip_id}']") is None:
             clip = ET.SubElement(
                 defs,
@@ -422,6 +485,11 @@ def _apply_clips(
     graph: SceneGraph,
     svg_groups: dict[str, ET.Element],
 ) -> None:
+    # Build every clip definition before attaching any element's clip-path. This
+    # keeps custom-offset silhouette extraction independent of scene traversal
+    # order and prevents a target's own display clip from being baked into the
+    # derived source geometry accidentally.
+    assignments: list[tuple[ET.Element, str]] = []
     for node in graph.root.walk():
         if not isinstance(node.config, ElementSpec):
             continue
@@ -432,9 +500,13 @@ def _apply_clips(
             geometry,
             defs,
             graph,
+            svg_groups,
         )
         if clip_id:
-            group.set("clip-path", f"url(#{clip_id})")
+            assignments.append((group, clip_id))
+
+    for group, clip_id in assignments:
+        group.set("clip-path", f"url(#{clip_id})")
 
 
 def render_design(
