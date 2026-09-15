@@ -73,18 +73,18 @@ layers:
     elements:
       - id: orbit-main
         type: orbit
-        centre:
-          target: earth
         radius_x: 31
         radius_y: 11
         rotation: 0deg
+        position:
+          mode: relative
+          target: earth
+          target_anchor: globe-centre
+          self_anchor: orbit-centre
         stroke:
           colour: orbit
           width: 0.9
-        occlusion:
-          behind:
-            - earth
-          gap: 0.5
+        # Object-based Earth occlusion is added by the next orbit/occlusion pass.
 
       - id: orbit-marker
         type: star
