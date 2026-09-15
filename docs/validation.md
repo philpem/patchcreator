@@ -52,6 +52,46 @@ points, and overlap findings carry the physical intersection bounds plus a point
 inside that intersection; this is intentionally useful to the visual debug
 layer.
 
+## Visual debug SVG
+
+`patchcreator check` can also write a copy of the artwork with a removable top
+Inkscape layer showing the structured findings:
+
+```text
+patchcreator check artwork.svg --debug-svg artwork-debug.svg
+```
+
+The source artwork is read for validation and copied to the requested output;
+validation geometry is added only inside the final `PatchCreator Validation`
+Inkscape layer. The layer can therefore be hidden or deleted without changing
+the artwork beneath it. Re-generating a debug layer replaces a previous layer
+with the same ID rather than stacking duplicates.
+
+Finding geometry is stored internally in physical millimetres. The debug layer
+uses the inverse of the document's physical viewBox transform so markers remain
+the correct size and position in SVGs whose user units are not millimetres.
+Bounds-based findings get a lightly filled dashed rectangle; gap findings also
+show the line between the measured nearest points; overlap findings show the
+intersection bounds and a representative point. Findings that currently have
+only an object ID, notably some stroke-only checks, are listed in an ID-linked
+legend rather than modifying the original object to force a visual highlight.
+Each marker group carries `data-patchcreator-*` attributes containing its
+finding code, severity and target object IDs for inspection or future GUI use.
+
+The default colours are deliberately high contrast, but all three severities
+can be changed globally for a generated debug copy:
+
+```text
+patchcreator check artwork.svg --debug-svg artwork-debug.svg \
+  --debug-error-colour '#ff0000' \
+  --debug-warning-colour '#ffff00' \
+  --debug-info-colour '#00ffff'
+```
+
+The Python API exposes the same controls through
+`patchcreator.validation.OverlayStyle`, `add_debug_layer()` and
+`write_debug_svg()`.
+
 ## Physical units
 
 For an SVG with a `viewBox`, PatchCreator uses the document's physical
