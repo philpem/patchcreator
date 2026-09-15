@@ -73,10 +73,13 @@ class ComponentRegistry:
             # can request an empty registry with include_builtins=False.
             from .earth import render_earth
             from .stars import render_star, render_starfield
+            from .trajectories import render_orbit, render_trajectory
 
             self.register("earth", render_earth)
+            self.register("orbit", render_orbit)
             self.register("star", render_star)
             self.register("starfield", render_starfield)
+            self.register("trajectory", render_trajectory)
 
     def register(self, component_type: str, renderer: ComponentRenderer) -> None:
         if component_type in self._renderers:
