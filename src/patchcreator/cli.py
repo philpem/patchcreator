@@ -1,7 +1,8 @@
 """PatchCreator command-line interface.
 
-CLI handlers intentionally stay thin: parsing, scene construction and SVG
-writing live in the library so the future GUI can use the same code paths.
+CLI handlers intentionally stay thin: parsing, scene construction, validation
+and SVG writing live in the library so the future GUI can use the same code
+paths.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from patchcreator import __version__
 from patchcreator.assets import AssetReport, inspect_asset, normalize_asset
 from patchcreator.components import UnsupportedComponentError
 from patchcreator.config.loader import DesignLoadError, load_design
+from patchcreator.config.schema import ProfileSpec
 from patchcreator.data import (
     DataSourceError,
     fetch_dataset,
@@ -23,7 +25,9 @@ from patchcreator.data import (
     resolve_data_root,
 )
 from patchcreator.profiles import ProfileError, load_profile_catalog, resolve_profile
+from patchcreator.profiles.model import ProfileConstraints
 from patchcreator.svg.writer import write_design_svg
+from patchcreator.validation import SvgInspectionError, check_svg
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
@@ -41,13 +45,55 @@ def _cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
-def _not_implemented(command: str) -> int:
-    print(f"patchcreator {command}: not implemented yet", file=sys.stderr)
-    return 2
-
-
 def _cmd_check(args: argparse.Namespace) -> int:
-    return _not_implemented("check")
+    overrides = ProfileConstraints()
+    if args.minimum_stroke_width is not None:
+        if args.minimum_stroke_width < 0:
+            print("--minimum-stroke-width must not be negative", file=sys.stderr)
+            return 2
+        overrides = ProfileConstraints(
+            validation_enabled=True,
+            minimum_stroke_width=args.minimum_stroke_width,
+        )
+
+    try:
+        effective = resolve_profile(
+            ProfileSpec(
+                machine=args.machine,
+                intent=args.intent,
+                overrides=overrides,
+            ),
+            load_profile_catalog(args.profile_path or ()),
+        )
+        if effective.constraints.validation_enabled is False:
+            print(
+                f"validation disabled by effective profile "
+                f"{effective.intent or effective.machine or '(unnamed)'}"
+            )
+            return 0
+        minimum = effective.constraints.minimum_stroke_width
+        if minimum is None:
+            raise ProfileError(
+                "effective profile does not define minimum_stroke_width; "
+                "select an intent profile or pass --minimum-stroke-width"
+            )
+        report = check_svg(
+            args.artwork,
+            minimum_stroke_width_mm=minimum,
+        )
+    except (OSError, ProfileError, SvgInspectionError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    for finding in report.findings:
+        print(finding.format())
+    if report.findings:
+        print(
+            f"{len(report.findings)} finding(s); minimum stroke width {minimum:.3g} mm"
+        )
+        return 1
+    print(f"OK; minimum stroke width {minimum:.3g} mm")
+    return 0
 
 
 def _format_bounds(report: AssetReport) -> str:
@@ -244,6 +290,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = subparsers.add_parser("check", help="analyse an SVG for embroidery geometry problems")
     check.add_argument("artwork")
+    check.add_argument(
+        "--intent",
+        default="standard-patch",
+        help="design-intent profile (default: standard-patch)",
+    )
+    check.add_argument("--machine", help="optional machine profile")
+    check.add_argument(
+        "--minimum-stroke-width",
+        type=float,
+        metavar="MM",
+        help="override the profile's minimum visible stroke width",
+    )
+    _add_profile_path_argument(check)
     check.set_defaults(func=_cmd_check)
 
     normalize = subparsers.add_parser("normalize", help="inspect/normalise a reusable SVG asset")
