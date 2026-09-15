@@ -71,11 +71,13 @@ class ComponentRegistry:
             # Delayed imports avoid module cycles: built-in component modules
             # use ComponentResult from this module. Third-party/test registries
             # can request an empty registry with include_builtins=False.
+            from .assets import render_asset
             from .earth import render_earth
             from .stars import render_star, render_starfield
             from .text import render_text
             from .trajectories import render_orbit, render_trajectory
 
+            self.register("asset", render_asset)
             self.register("earth", render_earth)
             self.register("orbit", render_orbit)
             self.register("star", render_star)
