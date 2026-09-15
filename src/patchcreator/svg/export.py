@@ -14,6 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from patchcreator.assets.normalize import _flatten_safe_leaf_transforms
+from patchcreator.svg.knockout import KnockoutResult, apply_knockout
 
 SVG_NS = "http://www.w3.org/2000/svg"
 INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
@@ -55,6 +56,8 @@ class ExportResult:
     removed_construction_count: int = 0
     removed_debug_layer_count: int = 0
     pruned_defs_count: int = 0
+    knockout_changed_fragments: int = 0
+    knockout_removed_fragments: int = 0
     warnings: tuple[str, ...] = ()
 
 
@@ -306,17 +309,21 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
             "text-to-path export requires a font shaping/rendering backend; "
             "preserve live text here or convert it explicitly in Inkscape"
         )
-    if options.knockout:
-        raise CompatibilityExportError(
-            "overlap knockout is not yet implemented in the compatibility pass; "
-            "the master SVG preserves knockout policy metadata for a later boolean pass"
-        )
 
     root = _parse_svg(text)
     removed_debug = _remove_debug_layers(root) if options.remove_debug_layer else 0
     removed_construction = _remove_construction_geometry(root) if options.remove_construction else 0
     expanded = _expand_internal_uses(root) if options.expand_use else 0
     flattened = _flatten_safe_leaf_transforms(root) if options.flatten_safe_transforms else 0
+
+    if options.knockout:
+        try:
+            knockout_result = apply_knockout(root)
+        except ValueError as exc:
+            raise CompatibilityExportError(str(exc)) from exc
+    else:
+        knockout_result = KnockoutResult(changed_fragments=0, removed_fragments=0)
+
     pruned = _prune_unused_defs(root) if options.prune_unused_defs else 0
     _strip_metadata(root, options)
 
@@ -329,6 +336,9 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
         removed_construction_count=removed_construction,
         removed_debug_layer_count=removed_debug,
         pruned_defs_count=pruned,
+        knockout_changed_fragments=knockout_result.changed_fragments,
+        knockout_removed_fragments=knockout_result.removed_fragments,
+        warnings=knockout_result.warnings,
     )
 
 
