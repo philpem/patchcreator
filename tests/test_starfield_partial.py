@@ -85,11 +85,11 @@ layers:
         render_design(design, allow_unsupported=True)
 
 
-def test_basic_round_patch_can_be_partially_rendered_while_components_are_missing(
+def test_basic_round_patch_renders_supported_earth_orbit_and_text(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    # Keep the regression offline while exercising supported Earth/orbit
-    # components and real starfield avoidance against resolved Earth geometry.
+    # Keep the regression offline while exercising supported Earth/orbit/text
+    # components and starfield avoidance against resolved geometry.
     monkeypatch.setattr(
         earth_component,
         "load_natural_earth_land_rings",
@@ -110,8 +110,9 @@ def test_basic_round_patch_can_be_partially_rendered_while_components_are_missin
     assert "<svg" in result.svg
     assert 'patchcreator:earth-source="natural-earth-land-110m"' in result.svg
     assert 'id="orbit-main-path"' in result.svg
+    assert 'id="orbit-main-visible"' in result.svg
     assert 'id="orbit-marker-glyph"' in result.svg
-    assert not any("skipping unsupported component 'earth'" in item for item in result.warnings)
-    assert not any("path provider 'orbit-main' was skipped" in item for item in result.warnings)
-    assert any("skipping unsupported component 'title'" in item for item in result.warnings)
-    assert any("could not apply avoidance target 'title'" in item for item in result.warnings)
+    assert 'id="title-text"' in result.svg
+    assert 'id="title-baseline"' in result.svg
+    assert not any("skipping unsupported component" in item for item in result.warnings)
+    assert not any("could not apply avoidance target 'title'" in item for item in result.warnings)
