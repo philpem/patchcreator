@@ -209,7 +209,7 @@ layers:
         render_design(design)
 
 
-def test_custom_clip_inset_is_rejected_until_arbitrary_offsets_exist():
+def test_custom_clip_offset_requires_a_filled_source_silhouette():
     design = loads_design(
         """
 version: 0.1
@@ -225,5 +225,5 @@ layers:
         clip: {target: "custom:source", inset: 1}
 """
     )
-    with pytest.raises(ValueError, match="cannot use inset/outset yet"):
+    with pytest.raises(ValueError, match="no supported visible filled geometry"):
         render_design(design)
