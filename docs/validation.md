@@ -9,7 +9,8 @@ The current validator checks:
 - minimum visible stroke width;
 - minimum physical dimension of filled features;
 - minimum area of each connected filled island, including tiny detached
-  subpaths within a much larger SVG object.
+  subpaths within a much larger SVG object;
+- minimum positive edge-to-edge clearance between visible filled geometry.
 
 ```text
 patchcreator check artwork.svg
@@ -27,9 +28,9 @@ patchcreator check display.svg --intent display-art
 ```
 
 User profile directories use the same `--profile-path DIR` mechanism as the
-`profiles` commands. A one-off stroke threshold may be supplied with
-`--minimum-stroke-width MM`; feature dimension and island area currently come
-from the effective profile.
+`profiles` commands. One-off overrides may be supplied with
+`--minimum-stroke-width MM` and `--minimum-gap MM`; feature dimension and island
+area currently come from the effective profile.
 
 Exit status is:
 
@@ -39,9 +40,10 @@ Exit status is:
 
 Findings are structured in the Python API (`patchcreator.validation.Finding`)
 and contain a stable code, severity, object ID/tag where available, measured
-physical value and threshold. Area findings use mm². Feature findings also carry
-physical bounds; this is intentionally the geometry the future visual debug
-layer will consume.
+physical value and threshold. Pairwise findings can also name the related SVG
+object. Area findings use mm². Feature findings carry physical bounds, and gap
+findings carry the nearest pair of physical points; this is intentionally useful
+to the future visual debug layer.
 
 ## Physical units
 
@@ -72,16 +74,30 @@ object. `island-too-small` measures each connected polygon component separately,
 so a 0.5 mm speck inside an otherwise 40 mm-wide compound path is still called
 out as an island rather than being hidden by the parent object's overall bounds.
 
-Default non-zero winding paths are conservatively unioned for this first pass;
-this can overestimate area for unusual hole constructions but avoids inventing
-false tiny-island findings. Exact winding/clip reconstruction can be tightened
-when the narrow-gap and overlap validators need it.
+`gap-too-narrow` measures the shortest positive edge-to-edge distance between
+visible filled SVG elements. It also checks disconnected polygon components
+inside a single compound SVG object. Findings identify both participating object
+IDs when they are available and record the nearest points in millimetres.
+Touching or overlapping geometry has zero distance and is deliberately not
+reported as a gap; that belongs to the overlap validator so the checks do not
+produce duplicate findings.
+
+The current gap pass measures filled geometry, not the outside edge of a stroked
+outline. Minimum stroke width is checked separately. This distinction keeps the
+analysis deterministic and avoids pretending that an SVG stroke already implies
+a particular embroidery stitch expansion.
+
+Default non-zero winding paths are currently conservatively unioned. This can
+overestimate filled area for unusual compound-hole constructions, which can in
+turn hide a gap that exists only inside such a hole. Even-odd paths are handled
+explicitly. Exact non-zero winding and clip reconstruction can be tightened as
+the overlap/knockout work develops.
 
 Hidden content, transparent paint and geometry in definitions, masks, clip
 paths and markers are ignored. CSS stylesheets and percentage stroke widths are
 not part of the current validation slice; such artwork should be normalised to
 presentation attributes before checking. Live text glyph outlines are also not
-expanded during small-feature analysis—text remains editable and will be
+expanded during filled-geometry analysis—text remains editable and will be
 handled by font-aware/export-time checks later.
 
 This validator reports vector-geometry risk. Actual embroidery behaviour also
