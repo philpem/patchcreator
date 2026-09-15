@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any
 
 from patchcreator.geometry.paths import PathSampler
@@ -92,11 +93,25 @@ class ComponentRegistry:
 
     def renderer_for(self, component_type: str) -> ComponentRenderer:
         try:
-            return self._renderers[component_type]
+            renderer = self._renderers[component_type]
         except KeyError as exc:
             raise UnsupportedComponentError(
                 f"unsupported component type {component_type!r}"
             ) from exc
+
+        @wraps(renderer)
+        def render_with_metadata(element: Any, context: Any) -> ComponentResult | None:
+            # Keep the authoring overlap policy with the generated SVG so the
+            # independent validator can still reason about it after an Inkscape
+            # round-trip. A plain data-* attribute avoids coupling this registry
+            # module to the SVG writer's namespace helpers.
+            target_group = getattr(context, "target_group", None)
+            overlap_policy = getattr(element, "overlap_policy", None)
+            if target_group is not None and overlap_policy is not None:
+                target_group.set("data-patchcreator-overlap-policy", str(overlap_policy))
+            return renderer(element, context)
+
+        return render_with_metadata
 
     @property
     def component_types(self) -> tuple[str, ...]:

@@ -21,6 +21,8 @@ class Finding:
     element_tag: str | None = None
     related_element_id: str | None = None
     related_element_tag: str | None = None
+    element_policy: str | None = None
+    related_element_policy: str | None = None
     measured_mm: float | None = None
     threshold_mm: float | None = None
     measured_mm2: float | None = None
@@ -38,6 +40,8 @@ class Finding:
             measurement = f" ({self.measured_mm:.3g} mm < {self.threshold_mm:.3g} mm)"
         elif self.measured_mm2 is not None and self.threshold_mm2 is not None:
             measurement = f" ({self.measured_mm2:.3g} mm² < {self.threshold_mm2:.3g} mm²)"
+        elif self.measured_mm2 is not None:
+            measurement = f" ({self.measured_mm2:.3g} mm² overlap)"
         return f"{self.severity}: {self.code}: {location}: {self.message}{measurement}"
 
 
@@ -49,7 +53,7 @@ class ValidationReport:
 
     @property
     def ok(self) -> bool:
-        return not self.findings
+        return self.error_count == 0 and self.warning_count == 0
 
     @property
     def error_count(self) -> int:
@@ -58,3 +62,7 @@ class ValidationReport:
     @property
     def warning_count(self) -> int:
         return sum(finding.severity == "warning" for finding in self.findings)
+
+    @property
+    def info_count(self) -> int:
+        return sum(finding.severity == "info" for finding in self.findings)

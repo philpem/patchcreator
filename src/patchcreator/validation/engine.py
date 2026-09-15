@@ -7,6 +7,7 @@ from pathlib import Path
 from .features import validate_small_features
 from .gaps import validate_narrow_gaps
 from .model import Finding, ValidationReport
+from .overlaps import validate_overlaps
 from .strokes import validate_minimum_stroke_width
 from .svg import load_svg
 
@@ -18,6 +19,7 @@ def check_svg(
     minimum_feature_dimension_mm: float | None = None,
     minimum_island_area_mm2: float | None = None,
     minimum_gap_mm: float | None = None,
+    overlap_diagnostics: bool = False,
 ) -> ValidationReport:
     """Validate an existing SVG without requiring a PatchCreator design."""
 
@@ -52,6 +54,10 @@ def check_svg(
                 minimum_mm=minimum_gap_mm,
             )
         )
+
+    if overlap_diagnostics:
+        validators.append("overlaps")
+        findings.extend(validate_overlaps(root))
 
     return ValidationReport(
         source=source,

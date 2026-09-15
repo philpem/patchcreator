@@ -5,6 +5,7 @@ from .features import validate_small_features
 from .gaps import validate_narrow_gaps
 from .geometry import FilledGeometry, iter_visible_fills, polygon_components
 from .model import Finding, ValidationReport
+from .overlaps import validate_overlaps
 from .strokes import validate_minimum_stroke_width
 from .svg import SvgInspectionError
 
@@ -18,5 +19,6 @@ __all__ = [
     "polygon_components",
     "validate_minimum_stroke_width",
     "validate_narrow_gaps",
+    "validate_overlaps",
     "validate_small_features",
 ]
