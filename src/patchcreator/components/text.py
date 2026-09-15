@@ -202,7 +202,12 @@ def _text_width_estimate(text: str, size: float, tracking: Any) -> float:
 
 def _validate_future_conversion_hooks(config: Mapping[str, Any], group: ET.Element) -> None:
     warp = config.get("warp")
-    if warp not in {None, False, "none"}:
+    warp_is_disabled = (
+        warp is None
+        or warp is False
+        or (isinstance(warp, str) and warp.strip().lower() == "none")
+    )
+    if not warp_is_disabled:
         raise ValueError(
             "text warp is reserved for the future text-to-path/warp export hook; "
             "keep warp unset/none for live SVG text"
