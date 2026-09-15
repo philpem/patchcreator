@@ -21,12 +21,17 @@ class Finding:
     element_tag: str | None = None
     measured_mm: float | None = None
     threshold_mm: float | None = None
+    measured_mm2: float | None = None
+    threshold_mm2: float | None = None
+    bounds_mm: tuple[float, float, float, float] | None = None
 
     def format(self) -> str:
         location = self.element_id or self.element_tag or "document"
         measurement = ""
         if self.measured_mm is not None and self.threshold_mm is not None:
             measurement = f" ({self.measured_mm:.3g} mm < {self.threshold_mm:.3g} mm)"
+        elif self.measured_mm2 is not None and self.threshold_mm2 is not None:
+            measurement = f" ({self.measured_mm2:.3g} mm² < {self.threshold_mm2:.3g} mm²)"
         return f"{self.severity}: {self.code}: {location}: {self.message}{measurement}"
 
 

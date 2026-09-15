@@ -82,11 +82,83 @@ def test_hidden_and_definition_geometry_is_ignored(tmp_path: Path):
     assert check_svg(path, minimum_stroke_width_mm=0.6).findings == ()
 
 
+def test_small_filled_primitive_reports_dimension_and_area(tmp_path: Path):
+    path = _write_svg(
+        tmp_path,
+        """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
+  <rect id="tiny" x="10" y="10" width="0.5" height="2" fill="#fff"/>
+</svg>""",
+    )
+    report = check_svg(
+        path,
+        minimum_feature_dimension_mm=0.8,
+        minimum_island_area_mm2=1.5,
+    )
+    by_code = {finding.code: finding for finding in report.findings}
+    assert by_code["feature-too-small"].element_id == "tiny"
+    assert by_code["feature-too-small"].measured_mm == pytest.approx(0.5)
+    assert by_code["island-too-small"].measured_mm2 == pytest.approx(1.0)
+    assert by_code["island-too-small"].bounds_mm == pytest.approx((10, 10, 10.5, 12))
+
+
+def test_compound_path_reports_tiny_detached_island_separately(tmp_path: Path):
+    path = _write_svg(
+        tmp_path,
+        """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
+  <path id="compound" fill="#fff" fill-rule="evenodd"
+        d="M 5 5 L 25 5 L 25 25 L 5 25 Z M 40 40 L 40.5 40 L 40.5 40.5 L 40 40.5 Z"/>
+</svg>""",
+    )
+    report = check_svg(
+        path,
+        minimum_feature_dimension_mm=0.8,
+        minimum_island_area_mm2=1.5,
+    )
+    island_findings = [finding for finding in report.findings if finding.code == "island-too-small"]
+    feature_findings = [finding for finding in report.findings if finding.code == "feature-too-small"]
+    assert len(island_findings) == 1
+    assert island_findings[0].element_id == "compound"
+    assert island_findings[0].measured_mm2 == pytest.approx(0.25)
+    assert "island" in island_findings[0].message
+    # The element as a whole is large; only its detached island is suspect.
+    assert feature_findings == []
+
+
+def test_filled_geometry_honours_nested_transforms(tmp_path: Path):
+    path = _write_svg(
+        tmp_path,
+        """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
+  <g transform="scale(0.5)">
+    <rect id="scaled-fill" x="0" y="0" width="1" height="4" fill="#fff"/>
+  </g>
+</svg>""",
+    )
+    report = check_svg(path, minimum_feature_dimension_mm=0.8)
+    assert len(report.findings) == 1
+    assert report.findings[0].code == "feature-too-small"
+    assert report.findings[0].measured_mm == pytest.approx(0.5)
+
+
+def test_curve_and_arc_paths_are_flattened_only_for_analysis(tmp_path: Path):
+    path = _write_svg(
+        tmp_path,
+        """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
+  <path id="curve" fill="#fff" d="M 10 10 C 12 8 18 8 20 10 A 5 5 0 0 1 10 10 Z"/>
+</svg>""",
+    )
+    report = check_svg(
+        path,
+        minimum_feature_dimension_mm=0.1,
+        minimum_island_area_mm2=0.1,
+    )
+    assert report.findings == ()
+
+
 def test_cli_check_uses_standard_patch_profile_by_default(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     path = _write_svg(
         tmp_path,
         """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
-  <path id="route" d="M0 0L10 0" stroke="#fff" stroke-width="0.4"/>
+  <path id="route" d="M0 0L10 0" fill="none" stroke="#fff" stroke-width="0.4"/>
 </svg>""",
     )
     assert main(["check", str(path)]) == 1
@@ -94,6 +166,20 @@ def test_cli_check_uses_standard_patch_profile_by_default(tmp_path: Path, capsys
     assert "stroke-too-thin" in output
     assert "route" in output
     assert "0.4 mm < 0.6 mm" in output
+
+
+def test_cli_standard_profile_also_checks_small_fills(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    path = _write_svg(
+        tmp_path,
+        """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
+  <rect id="speck" x="1" y="1" width="0.5" height="0.5" fill="#fff"/>
+</svg>""",
+    )
+    assert main(["check", str(path)]) == 1
+    output = capsys.readouterr().out
+    assert "feature-too-small" in output
+    assert "island-too-small" in output
+    assert "0.25 mm² < 1.5 mm²" in output
 
 
 def test_cli_check_profile_can_disable_validation(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
@@ -111,11 +197,11 @@ def test_cli_explicit_stroke_threshold_overrides_profile(tmp_path: Path, capsys:
     path = _write_svg(
         tmp_path,
         """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
-  <path d="M0 0L10 0" stroke="#fff" stroke-width="0.4"/>
+  <path d="M0 0L10 0" fill="none" stroke="#fff" stroke-width="0.4"/>
 </svg>""",
     )
     assert main(["check", str(path), "--minimum-stroke-width", "0.3"]) == 0
-    assert "OK; minimum stroke width 0.3 mm" in capsys.readouterr().out
+    assert "OK; profile standard-patch" in capsys.readouterr().out
 
 
 def test_svg_without_physical_size_gives_actionable_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
