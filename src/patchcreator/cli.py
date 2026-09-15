@@ -26,6 +26,7 @@ from patchcreator.data import (
 )
 from patchcreator.profiles import ProfileError, load_profile_catalog, resolve_profile
 from patchcreator.profiles.model import ProfileConstraints
+from patchcreator.svg import CompatibilityExportError, ExportOptions, export_svg_file
 from patchcreator.svg.writer import write_design_svg
 from patchcreator.validation import (
     OverlayStyle,
@@ -47,6 +48,41 @@ def _cmd_render(args: argparse.Namespace) -> int:
     for warning in result.warnings:
         print(f"warning: {warning}", file=sys.stderr)
     print(output)
+    return 0
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    source = Path(args.artwork)
+    output = Path(args.output) if args.output else source.with_name(source.stem + ".compat.svg")
+    try:
+        result = export_svg_file(
+            source,
+            output,
+            options=ExportOptions(
+                expand_use=not args.keep_use,
+                flatten_safe_transforms=not args.keep_safe_transforms,
+                remove_debug_layer=not args.keep_debug_layer,
+                remove_construction=not args.keep_construction,
+                strip_inkscape_metadata=not args.keep_inkscape_metadata,
+                strip_patchcreator_metadata=not args.keep_patchcreator_metadata,
+                prune_unused_defs=not args.keep_unused_defs,
+                text_mode=args.text,
+                knockout=args.knockout,
+            ),
+        )
+    except (CompatibilityExportError, OSError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    print(output)
+    print(
+        "export: "
+        f"expanded-use={result.expanded_use_count} "
+        f"flattened-transforms={result.flattened_transform_count} "
+        f"removed-construction={result.removed_construction_count} "
+        f"removed-debug={result.removed_debug_layer_count} "
+        f"pruned-defs={result.pruned_defs_count}"
+    )
     return 0
 
 
@@ -91,9 +127,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
                 constraints.minimum_island_area,
             )
         ):
-            raise ProfileError(
-                "effective profile does not define any validation thresholds"
-            )
+            raise ProfileError("effective profile does not define any validation thresholds")
         report = check_svg(
             args.artwork,
             minimum_stroke_width_mm=constraints.minimum_stroke_width,
@@ -328,6 +362,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip component types not implemented by the current renderer",
     )
     render.set_defaults(func=_cmd_render)
+
+    export = subparsers.add_parser("export", help="create a conservative compatibility SVG")
+    export.add_argument("artwork", help="master SVG input")
+    export.add_argument("-o", "--output", help="output SVG path (default: *.compat.svg)")
+    export.add_argument("--keep-use", action="store_true", help="do not expand internal <use> references")
+    export.add_argument(
+        "--keep-safe-transforms",
+        action="store_true",
+        help="leave simple leaf translate/uniform-scale transforms intact",
+    )
+    export.add_argument("--keep-debug-layer", action="store_true", help="retain PatchCreator validation overlay")
+    export.add_argument("--keep-construction", action="store_true", help="retain tagged construction geometry")
+    export.add_argument("--keep-inkscape-metadata", action="store_true", help="retain Inkscape/Sodipodi metadata")
+    export.add_argument("--keep-patchcreator-metadata", action="store_true", help="retain PatchCreator authoring metadata")
+    export.add_argument("--keep-unused-defs", action="store_true", help="retain unreferenced top-level defs entries")
+    export.add_argument(
+        "--text",
+        choices=("preserve", "paths"),
+        default="preserve",
+        help="text handling; paths currently fails explicitly pending a shaping backend",
+    )
+    export.add_argument(
+        "--knockout",
+        action="store_true",
+        help="request physical overlap knockout (currently fails explicitly rather than guessing)",
+    )
+    export.set_defaults(func=_cmd_export)
 
     check = subparsers.add_parser("check", help="analyse an SVG for embroidery geometry problems")
     check.add_argument("artwork")
