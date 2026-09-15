@@ -109,6 +109,13 @@ layers:
       - id: title
         type: text
         text: "SHARED ORBIT"
+        # Text geometry is local to the patch centre just like other procedural
+        # artwork, so make that placement explicit and keep it editable.
+        position:
+          mode: cartesian
+          x: 0
+          y: 0
+          self_anchor: origin
         layout:
           type: bottom-arc
           radius: 34
