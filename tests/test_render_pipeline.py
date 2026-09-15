@@ -58,7 +58,10 @@ def _deferred_renderer(element, context):
 
 
 def _registry() -> ComponentRegistry:
-    registry = ComponentRegistry()
+    # This file tests the generic render/placement pipeline, not built-in
+    # procedural components. Keep the registry intentionally isolated so adding
+    # a new built-in cannot silently change what "unsupported" means here.
+    registry = ComponentRegistry(include_builtins=False)
     registry.register("marker", _marker_renderer)
     registry.register("line", _line_renderer)
     registry.register("group", _group_renderer)

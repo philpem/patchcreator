@@ -63,13 +63,13 @@ canvas:
 layers:
   - id: art
     elements:
-      - id: future-earth
-        type: earth
+      - id: future-component
+        type: not-implemented-yet
 """
     )
     result = render_design(design, allow_unsupported=True)
     assert result.warnings
-    assert "future-earth" in result.warnings[0]
+    assert "future-component" in result.warnings[0]
 
 
 def test_explicit_inherit_uses_design_default_clip():

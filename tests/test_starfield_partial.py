@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+import patchcreator.components.earth as earth_component
 from patchcreator.config.loader import load_design, loads_design
 from patchcreator.svg.writer import render_design
 
@@ -45,18 +46,18 @@ layers:
         count: 2
         region: {type: rectangle, x: -10, y: -10, width: 20, height: 20}
         avoidance:
-          - target: earth
+          - target: subject
             clearance: 1
-      - id: earth
-        type: earth
+      - id: subject
+        type: future-subject
 """
     )
 
     result = render_design(design, allow_unsupported=True)
 
-    assert any("skipping unsupported component 'earth'" in item for item in result.warnings)
+    assert any("skipping unsupported component 'subject'" in item for item in result.warnings)
     assert any(
-        "could not apply avoidance target 'earth'" in item
+        "could not apply avoidance target 'subject'" in item
         and "skipped in this partial render" in item
         for item in result.warnings
     )
@@ -84,11 +85,30 @@ layers:
         render_design(design, allow_unsupported=True)
 
 
-def test_basic_round_patch_can_be_partially_rendered_while_components_are_missing():
+def test_basic_round_patch_can_be_partially_rendered_while_components_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Keep the regression offline while exercising the now-supported Earth
+    # component and real starfield avoidance against its resolved bounds.
+    monkeypatch.setattr(
+        earth_component,
+        "load_natural_earth_land_rings",
+        lambda: (
+            (
+                (-20.0, -10.0),
+                (20.0, -10.0),
+                (20.0, 10.0),
+                (-20.0, 10.0),
+                (-20.0, -10.0),
+            ),
+        ),
+    )
+
     example = Path(__file__).parents[1] / "examples" / "basic-round-patch.yaml"
     result = render_design(load_design(example), allow_unsupported=True)
 
     assert "<svg" in result.svg
-    assert any("skipping unsupported component 'earth'" in item for item in result.warnings)
+    assert 'patchcreator:earth-source="natural-earth-land-110m"' in result.svg
+    assert not any("skipping unsupported component 'earth'" in item for item in result.warnings)
     assert any("path provider 'orbit-main' was skipped" in item for item in result.warnings)
     assert "patchcreator:skipped=\"placement-dependency\"" in result.svg
