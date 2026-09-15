@@ -95,6 +95,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
             minimum_feature_dimension_mm=constraints.minimum_feature_dimension,
             minimum_island_area_mm2=constraints.minimum_island_area,
             minimum_gap_mm=constraints.minimum_gap,
+            overlap_diagnostics=True,
         )
     except (OSError, ProfileError, SvgInspectionError, ValueError) as exc:
         print(exc, file=sys.stderr)
@@ -103,9 +104,14 @@ def _cmd_check(args: argparse.Namespace) -> int:
     for finding in report.findings:
         print(finding.format())
     profile_name = effective.intent or effective.machine or "custom"
-    if report.findings:
-        print(f"{len(report.findings)} finding(s); profile {profile_name}")
+    actionable = report.error_count + report.warning_count
+    if actionable:
+        suffix = f", {report.info_count} informational" if report.info_count else ""
+        print(f"{actionable} actionable finding(s){suffix}; profile {profile_name}")
         return 1
+    if report.info_count:
+        print(f"OK; {report.info_count} informational finding(s); profile {profile_name}")
+        return 0
     print(f"OK; profile {profile_name}")
     return 0
 
