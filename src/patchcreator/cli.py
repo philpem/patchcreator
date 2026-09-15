@@ -46,15 +46,20 @@ def _cmd_render(args: argparse.Namespace) -> int:
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
-    overrides = ProfileConstraints()
+    override_values: dict[str, float | bool] = {}
     if args.minimum_stroke_width is not None:
         if args.minimum_stroke_width < 0:
             print("--minimum-stroke-width must not be negative", file=sys.stderr)
             return 2
-        overrides = ProfileConstraints(
-            validation_enabled=True,
-            minimum_stroke_width=args.minimum_stroke_width,
-        )
+        override_values["minimum_stroke_width"] = args.minimum_stroke_width
+    if args.minimum_gap is not None:
+        if args.minimum_gap < 0:
+            print("--minimum-gap must not be negative", file=sys.stderr)
+            return 2
+        override_values["minimum_gap"] = args.minimum_gap
+    if override_values:
+        override_values["validation_enabled"] = True
+    overrides = ProfileConstraints.model_validate(override_values)
 
     try:
         effective = resolve_profile(
@@ -71,17 +76,25 @@ def _cmd_check(args: argparse.Namespace) -> int:
                 f"{effective.intent or effective.machine or '(unnamed)'}"
             )
             return 0
-        minimum = effective.constraints.minimum_stroke_width
-        if minimum is None:
+        constraints = effective.constraints
+        if not any(
+            value is not None
+            for value in (
+                constraints.minimum_stroke_width,
+                constraints.minimum_gap,
+                constraints.minimum_feature_dimension,
+                constraints.minimum_island_area,
+            )
+        ):
             raise ProfileError(
-                "effective profile does not define minimum_stroke_width; "
-                "select an intent profile or pass --minimum-stroke-width"
+                "effective profile does not define any validation thresholds"
             )
         report = check_svg(
             args.artwork,
-            minimum_stroke_width_mm=minimum,
-            minimum_feature_dimension_mm=effective.constraints.minimum_feature_dimension,
-            minimum_island_area_mm2=effective.constraints.minimum_island_area,
+            minimum_stroke_width_mm=constraints.minimum_stroke_width,
+            minimum_feature_dimension_mm=constraints.minimum_feature_dimension,
+            minimum_island_area_mm2=constraints.minimum_island_area,
+            minimum_gap_mm=constraints.minimum_gap,
         )
     except (OSError, ProfileError, SvgInspectionError, ValueError) as exc:
         print(exc, file=sys.stderr)
@@ -302,6 +315,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         metavar="MM",
         help="override the profile's minimum visible stroke width",
+    )
+    check.add_argument(
+        "--minimum-gap",
+        type=float,
+        metavar="MM",
+        help="override the profile's minimum edge-to-edge filled-geometry gap",
     )
     _add_profile_path_argument(check)
     check.set_defaults(func=_cmd_check)
