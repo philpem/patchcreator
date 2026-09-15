@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     width="40mm" height="24mm" viewBox="0 0 100 60">
+  <g inkscape:groupmode="layer" inkscape:label="Artwork">
+    <rect x="36" y="23" width="28" height="18" rx="3"
+          fill="#888888" stroke="#222222" stroke-width="3"
+          data-patchcreator-fill-role="body"
+          data-patchcreator-stroke-role="outline"/>
+    <path d="M 50,23 C 42,16 38,10 38,5 C 48,7 57,11 63,18 Z"
+          fill="#dddddd" stroke="#222222" stroke-width="3"
+          data-patchcreator-fill-role="dish"
+          data-patchcreator-stroke-role="outline"/>
+    <line x1="50" y1="23" x2="50" y2="10"
+          stroke="#ffcc33" stroke-width="3"
+          data-patchcreator-stroke-role="accent"/>
+    <rect x="7" y="27" width="29" height="10" rx="1"
+          fill="#2d6cdf" stroke="#222222" stroke-width="2"
+          data-patchcreator-fill-role="panel"
+          data-patchcreator-stroke-role="outline"/>
+    <rect x="64" y="27" width="29" height="10" rx="1"
+          fill="#2d6cdf" stroke="#222222" stroke-width="2"
+          data-patchcreator-fill-role="panel"
+          data-patchcreator-stroke-role="outline"/>
+  </g>
+
+  <!-- Artists can unhide this layer in Inkscape, move the marker objects,
+       then hide it again. PatchCreator reads their centres as semantic anchors. -->
+  <g inkscape:groupmode="layer" inkscape:label="PatchCreator Anchors"
+     style="display:none">
+    <circle cx="50" cy="10" r="1.5" data-patchcreator-anchor="dish-tip"/>
+    <circle cx="50" cy="32" r="1.5" data-patchcreator-anchor="body-centre"/>
+    <circle cx="7" cy="32" r="1.5" data-patchcreator-anchor="left-panel-tip"/>
+    <circle cx="93" cy="32" r="1.5" data-patchcreator-anchor="right-panel-tip"/>
+  </g>
+</svg>
