@@ -80,6 +80,8 @@ def _cmd_check(args: argparse.Namespace) -> int:
         report = check_svg(
             args.artwork,
             minimum_stroke_width_mm=minimum,
+            minimum_feature_dimension_mm=effective.constraints.minimum_feature_dimension,
+            minimum_island_area_mm2=effective.constraints.minimum_island_area,
         )
     except (OSError, ProfileError, SvgInspectionError, ValueError) as exc:
         print(exc, file=sys.stderr)
@@ -87,12 +89,11 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
     for finding in report.findings:
         print(finding.format())
+    profile_name = effective.intent or effective.machine or "custom"
     if report.findings:
-        print(
-            f"{len(report.findings)} finding(s); minimum stroke width {minimum:.3g} mm"
-        )
+        print(f"{len(report.findings)} finding(s); profile {profile_name}")
         return 1
-    print(f"OK; minimum stroke width {minimum:.3g} mm")
+    print(f"OK; profile {profile_name}")
     return 0
 
 
