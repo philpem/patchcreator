@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .features import validate_small_features
+from .gaps import validate_narrow_gaps
 from .model import Finding, ValidationReport
 from .strokes import validate_minimum_stroke_width
 from .svg import load_svg
@@ -16,6 +17,7 @@ def check_svg(
     minimum_stroke_width_mm: float | None = None,
     minimum_feature_dimension_mm: float | None = None,
     minimum_island_area_mm2: float | None = None,
+    minimum_gap_mm: float | None = None,
 ) -> ValidationReport:
     """Validate an existing SVG without requiring a PatchCreator design."""
 
@@ -39,6 +41,15 @@ def check_svg(
                 root,
                 minimum_dimension_mm=minimum_feature_dimension_mm,
                 minimum_island_area_mm2=minimum_island_area_mm2,
+            )
+        )
+
+    if minimum_gap_mm is not None:
+        validators.append("narrow-gaps")
+        findings.extend(
+            validate_narrow_gaps(
+                root,
+                minimum_mm=minimum_gap_mm,
             )
         )
 
