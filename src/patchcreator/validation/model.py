@@ -12,21 +12,27 @@ Severity = Literal["info", "warning", "error"]
 
 @dataclass(frozen=True)
 class Finding:
-    """One embroidery-geometry concern tied to an SVG object where possible."""
+    """One embroidery-geometry concern tied to SVG objects where possible."""
 
     code: str
     severity: Severity
     message: str
     element_id: str | None = None
     element_tag: str | None = None
+    related_element_id: str | None = None
+    related_element_tag: str | None = None
     measured_mm: float | None = None
     threshold_mm: float | None = None
     measured_mm2: float | None = None
     threshold_mm2: float | None = None
     bounds_mm: tuple[float, float, float, float] | None = None
+    points_mm: tuple[tuple[float, float], ...] | None = None
 
     def format(self) -> str:
         location = self.element_id or self.element_tag or "document"
+        related = self.related_element_id or self.related_element_tag
+        if related:
+            location = f"{location} <-> {related}"
         measurement = ""
         if self.measured_mm is not None and self.threshold_mm is not None:
             measurement = f" ({self.measured_mm:.3g} mm < {self.threshold_mm:.3g} mm)"
