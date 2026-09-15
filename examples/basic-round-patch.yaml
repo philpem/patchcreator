@@ -84,7 +84,13 @@ layers:
         stroke:
           colour: orbit
           width: 0.9
-        # Object-based Earth occlusion is added by the next orbit/occlusion pass.
+        occlusion:
+          behind:
+            - earth
+          gap: 0.5
+          # Treat the lower half as the near side: it remains visible over Earth,
+          # while the upper/far half is physically split around the Earth disc.
+          near_side: bottom
 
       - id: orbit-marker
         type: star
