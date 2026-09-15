@@ -84,7 +84,7 @@ def _path_data(polygons: Iterable[Iterable[tuple[float, float]]]) -> str:
 
 
 def _stroke_attrs(design: Any, raw: Any, *, default_colour: str) -> dict[str, str]:
-    if raw in {None, False}:
+    if raw is None or raw is False:
         return {}
     if raw is True:
         config: Mapping[str, Any] = {}
@@ -230,20 +230,19 @@ def render_earth(element: Any, context: Any) -> ComponentResult:
         )
 
     land_path = _path_data(polygons)
-    if land_value is not None and land_path:
+    coastline_attrs = _stroke_attrs(
+        context.design,
+        style.get("coastline"),
+        default_colour=str(style.get("coastline_colour", land_value or "#ffffff")),
+    )
+    if land_path and (land_value is not None or coastline_attrs):
         attrs = {
             "id": f"{element.id}-land",
             "d": land_path,
-            "fill": _colour(context.design, str(land_value)),
+            "fill": _colour(context.design, str(land_value)) if land_value is not None else "none",
             "fill-rule": "evenodd",
         }
-        attrs.update(
-            _stroke_attrs(
-                context.design,
-                style.get("coastline"),
-                default_colour=str(style.get("coastline_colour", land_value)),
-            )
-        )
+        attrs.update(coastline_attrs)
         ET.SubElement(artwork, _q(SVG_NS, "path"), attrs)
 
     outline_attrs = _stroke_attrs(
@@ -266,7 +265,7 @@ def render_earth(element: Any, context: Any) -> ComponentResult:
         )
 
     atmosphere = style.get("atmosphere")
-    if atmosphere not in {None, False}:
+    if atmosphere is not None and atmosphere is not False:
         atmosphere_attrs = _stroke_attrs(
             context.design,
             atmosphere,
