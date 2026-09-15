@@ -107,4 +107,6 @@ def loads_design(text: str, *, source: str | None = None) -> DesignSpec:
 
 def load_design(path: str | Path) -> DesignSpec:
     path = Path(path)
-    return loads_design(path.read_text(encoding="utf-8"), source=str(path))
+    design = loads_design(path.read_text(encoding="utf-8"), source=str(path))
+    design.set_source_dir(path.parent)
+    return design
