@@ -27,7 +27,12 @@ from patchcreator.data import (
 from patchcreator.profiles import ProfileError, load_profile_catalog, resolve_profile
 from patchcreator.profiles.model import ProfileConstraints
 from patchcreator.svg.writer import write_design_svg
-from patchcreator.validation import SvgInspectionError, check_svg
+from patchcreator.validation import (
+    OverlayStyle,
+    SvgInspectionError,
+    check_svg,
+    write_debug_svg,
+)
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
@@ -97,12 +102,28 @@ def _cmd_check(args: argparse.Namespace) -> int:
             minimum_gap_mm=constraints.minimum_gap,
             overlap_diagnostics=True,
         )
+        if args.debug_svg:
+            style = OverlayStyle(
+                error_colour=args.debug_error_colour,
+                warning_colour=args.debug_warning_colour,
+                info_colour=args.debug_info_colour,
+            )
+            debug_path = write_debug_svg(
+                args.artwork,
+                report,
+                args.debug_svg,
+                style=style,
+            )
+        else:
+            debug_path = None
     except (OSError, ProfileError, SvgInspectionError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
 
     for finding in report.findings:
         print(finding.format())
+    if debug_path is not None:
+        print(f"debug-svg: {debug_path}")
     profile_name = effective.intent or effective.machine or "custom"
     actionable = report.error_count + report.warning_count
     if actionable:
@@ -327,6 +348,29 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         metavar="MM",
         help="override the profile's minimum edge-to-edge filled-geometry gap",
+    )
+    check.add_argument(
+        "--debug-svg",
+        metavar="FILE",
+        help="write a copy of the SVG with a removable top validation layer",
+    )
+    check.add_argument(
+        "--debug-error-colour",
+        default="#ff2d2d",
+        metavar="COLOUR",
+        help="error marker colour for --debug-svg",
+    )
+    check.add_argument(
+        "--debug-warning-colour",
+        default="#ffb000",
+        metavar="COLOUR",
+        help="warning marker colour for --debug-svg",
+    )
+    check.add_argument(
+        "--debug-info-colour",
+        default="#00a6ff",
+        metavar="COLOUR",
+        help="informational marker colour for --debug-svg",
     )
     _add_profile_path_argument(check)
     check.set_defaults(func=_cmd_check)
