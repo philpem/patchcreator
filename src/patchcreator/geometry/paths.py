@@ -119,8 +119,16 @@ class CubicBezierPath:
     @property
     def bounds(self) -> Bounds:
         ts = {0.0, 1.0}
-        ts.update(_cubic_extrema_parameters(self.start[0], self.control1[0], self.control2[0], self.end[0]))
-        ts.update(_cubic_extrema_parameters(self.start[1], self.control1[1], self.control2[1], self.end[1]))
+        ts.update(
+            _cubic_extrema_parameters(
+                self.start[0], self.control1[0], self.control2[0], self.end[0]
+            )
+        )
+        ts.update(
+            _cubic_extrema_parameters(
+                self.start[1], self.control1[1], self.control2[1], self.end[1]
+            )
+        )
         points = [self.point_at_parameter(t) for t in ts]
         return Bounds(
             min(point[0] for point in points),
@@ -241,7 +249,9 @@ class CompoundPath:
                     max(point[0] for point in points),
                     max(point[1] for point in points),
                 )
-            bounds = current if bounds is None else bounds.union(current)
+            combined = Bounds.union(bounds, current)
+            assert combined is not None
+            bounds = combined
         assert bounds is not None
         return bounds
 
@@ -304,7 +314,12 @@ def _parameter_for_length_fraction(
     return parameters[index - 1] + ratio * (parameters[index] - parameters[index - 1])
 
 
-def _cubic_extrema_parameters(p0: float, p1: float, p2: float, p3: float) -> set[float]:
+def _cubic_extrema_parameters(
+    p0: float,
+    p1: float,
+    p2: float,
+    p3: float,
+) -> set[float]:
     # Cubic power coefficients; derivative is 3a*t^2 + 2b*t + c.
     a = -p0 + 3.0 * p1 - 3.0 * p2 + p3
     b = 3.0 * p0 - 6.0 * p1 + 3.0 * p2
@@ -323,7 +338,10 @@ def _cubic_extrema_parameters(p0: float, p1: float, p2: float, p3: float) -> set
     if discriminant < 0:
         return roots
     sqrt_d = math.sqrt(max(0.0, discriminant))
-    for root in ((-qb - sqrt_d) / (2.0 * qa), (-qb + sqrt_d) / (2.0 * qa)):
+    for root in (
+        (-qb - sqrt_d) / (2.0 * qa),
+        (-qb + sqrt_d) / (2.0 * qa),
+    ):
         if 0.0 < root < 1.0:
             roots.add(root)
     return roots
