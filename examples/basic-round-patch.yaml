@@ -1,3 +1,6 @@
+# Full 80 mm demonstrator. Earth rendering needs the explicitly downloaded
+# Natural Earth dataset:
+#   patchcreator data fetch natural-earth-land-110m
 version: 0.1
 units: mm
 
@@ -35,7 +38,9 @@ layers:
     elements:
       - id: stars
         type: starfield
-        seed: auto
+        # Fixed rather than auto so this example doubles as a deterministic
+        # regression/golden-structure input.
+        seed: 1511506142
         region:
           type: annular-sector
           inner_radius: 0.20r
