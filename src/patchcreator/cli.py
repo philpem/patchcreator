@@ -30,7 +30,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
         design = load_design(args.design)
         output = Path(args.output) if args.output else Path(args.design).with_suffix(".svg")
         result = write_design_svg(design, output, allow_unsupported=args.allow_unsupported)
-    except (DesignLoadError, UnsupportedComponentError, OSError, ValueError) as exc:
+    except (DesignLoadError, DataSourceError, UnsupportedComponentError, OSError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
 
