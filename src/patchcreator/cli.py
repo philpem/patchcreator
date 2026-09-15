@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 
 from patchcreator import __version__
+from patchcreator.assets import AssetReport, inspect_asset, normalize_asset
 from patchcreator.components import UnsupportedComponentError
 from patchcreator.config.loader import DesignLoadError, load_design
 from patchcreator.data import (
@@ -49,8 +50,72 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return _not_implemented("check")
 
 
+def _format_bounds(report: AssetReport) -> str:
+    if report.bounds is None:
+        return "-"
+    bounds = report.bounds
+    return (
+        f"{bounds.min_x:.6g},{bounds.min_y:.6g} "
+        f"{bounds.max_x:.6g},{bounds.max_y:.6g} "
+        f"({bounds.width:.6g} x {bounds.height:.6g})"
+    )
+
+
+def _print_asset_report(report: AssetReport) -> None:
+    if report.viewbox is None:
+        viewbox = "-"
+    else:
+        viewbox = " ".join(f"{value:.6g}" for value in report.viewbox)
+    width, height = report.physical_size_mm
+    physical = (
+        f"{width:.6g} x {height:.6g} mm"
+        if width is not None and height is not None
+        else "-"
+    )
+    print(f"source: {report.source}")
+    print(f"viewBox: {viewbox}")
+    print(f"physical-size: {physical}")
+    print(f"geometry-bounds: {_format_bounds(report)}")
+    print(f"anchors: {', '.join(report.anchors) if report.anchors else '-'}")
+    print(f"colour-roles: {', '.join(report.colour_roles) if report.colour_roles else '-'}")
+    print(f"transforms: {report.transform_count}")
+    if report.flattened_transform_count:
+        print(f"flattened-transforms: {report.flattened_transform_count}")
+    if report.unsupported_geometry:
+        print("unsupported-geometry: " + ", ".join(report.unsupported_geometry))
+
+
 def _cmd_normalize(args: argparse.Namespace) -> int:
-    return _not_implemented("normalize")
+    source = Path(args.asset)
+    mutating = args.fix_viewbox or args.flatten_safe_transforms
+    try:
+        if not mutating:
+            report = inspect_asset(source)
+        else:
+            if args.in_place and args.output:
+                raise ValueError("--in-place and --output are mutually exclusive")
+            if args.in_place:
+                destination = source
+            elif args.output:
+                destination = Path(args.output)
+            else:
+                raise ValueError(
+                    "normalization changes require --output FILE or --in-place; "
+                    "omit mutation options for inspection only"
+                )
+            report = normalize_asset(
+                source,
+                output=destination,
+                fix_viewbox=args.fix_viewbox,
+                padding=args.padding,
+                flatten_safe_transforms=args.flatten_safe_transforms,
+            )
+    except (OSError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    _print_asset_report(report)
+    return 0
 
 
 def _profile_catalog(args: argparse.Namespace):
@@ -183,6 +248,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     normalize = subparsers.add_parser("normalize", help="inspect/normalise a reusable SVG asset")
     normalize.add_argument("asset")
+    normalize.add_argument("-o", "--output", help="write a normalised copy to FILE")
+    normalize.add_argument("--in-place", action="store_true", help="replace the input asset")
+    normalize.add_argument(
+        "--fix-viewbox",
+        action="store_true",
+        help="replace viewBox with conservative visible-geometry bounds",
+    )
+    normalize.add_argument(
+        "--padding",
+        type=float,
+        default=0.0,
+        metavar="UNITS",
+        help="padding to add around geometry when fixing viewBox",
+    )
+    normalize.add_argument(
+        "--flatten-safe-transforms",
+        action="store_true",
+        help="bake leaf translate/uniform-scale transforms into supported primitive geometry",
+    )
     normalize.set_defaults(func=_cmd_normalize)
 
     profiles = subparsers.add_parser("profiles", help="inspect embroidery profiles")
