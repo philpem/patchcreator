@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg"
      width="80mm" height="80mm" viewBox="0 0 80 80">
-  <!-- Deliberately problematic artwork for:
-       patchcreator check examples/validation-risk-demo.svg
-         --debug-svg validation-risk-demo.debug.svg -->
+  <!-- Deliberately problematic artwork. Run patchcreator check on this file
+       and request a debug SVG to see the removable validation overlay. -->
 
   <!-- Minimum-stroke-width finding: 0.30 mm < standard-patch 0.60 mm. -->
   <path id="thin-route" d="M 8,68 C 24,52 50,58 70,66"
