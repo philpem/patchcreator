@@ -90,7 +90,10 @@ def test_geometry_inside_one_logical_component_is_unioned_before_comparison():
     assert validate_overlaps(root) == []
 
 
-def test_knockout_overlap_is_informational_and_does_not_make_report_fail(tmp_path: Path):
+def test_knockout_overlap_is_informational_and_does_not_make_report_fail(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+):
     path = _write_svg(
         tmp_path,
         '<g id="lower" data-patchcreator-overlap-policy="knockout">'
@@ -108,7 +111,9 @@ def test_knockout_overlap_is_informational_and_does_not_make_report_fail(tmp_pat
     assert report.ok
 
     assert main(["check", str(path)]) == 0
-    output = capsys_output = None
+    output = capsys.readouterr().out
+    assert "overlap-knockout-pending" in output
+    assert "OK; 1 informational finding(s)" in output
 
 
 def test_generated_patchcreator_svg_preserves_overlap_policy_metadata():
