@@ -74,6 +74,8 @@ def _cmd_export(args: argparse.Namespace) -> int:
         print(exc, file=sys.stderr)
         return 2
 
+    for warning in result.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
     print(output)
     print(
         "export: "
@@ -81,7 +83,9 @@ def _cmd_export(args: argparse.Namespace) -> int:
         f"flattened-transforms={result.flattened_transform_count} "
         f"removed-construction={result.removed_construction_count} "
         f"removed-debug={result.removed_debug_layer_count} "
-        f"pruned-defs={result.pruned_defs_count}"
+        f"pruned-defs={result.pruned_defs_count} "
+        f"knockout-changed={result.knockout_changed_fragments} "
+        f"knockout-removed={result.knockout_removed_fragments}"
     )
     return 0
 
@@ -364,29 +368,29 @@ def build_parser() -> argparse.ArgumentParser:
     render.set_defaults(func=_cmd_render)
 
     export = subparsers.add_parser("export", help="create a conservative compatibility SVG")
-    export.add_argument("artwork", help="master SVG input")
-    export.add_argument("-o", "--output", help="output SVG path (default: *.compat.svg)")
-    export.add_argument("--keep-use", action="store_true", help="do not expand internal <use> references")
+    export.add_argument("artwork", help="editable master SVG")
+    export.add_argument("-o", "--output", help="compatibility SVG (default: <stem>.compat.svg)")
+    export.add_argument("--keep-use", action="store_true", help="preserve SVG <use> references")
     export.add_argument(
         "--keep-safe-transforms",
         action="store_true",
-        help="leave simple leaf translate/uniform-scale transforms intact",
+        help="preserve even simple leaf translate/uniform-scale transforms",
     )
-    export.add_argument("--keep-debug-layer", action="store_true", help="retain PatchCreator validation overlay")
-    export.add_argument("--keep-construction", action="store_true", help="retain tagged construction geometry")
-    export.add_argument("--keep-inkscape-metadata", action="store_true", help="retain Inkscape/Sodipodi metadata")
-    export.add_argument("--keep-patchcreator-metadata", action="store_true", help="retain PatchCreator authoring metadata")
-    export.add_argument("--keep-unused-defs", action="store_true", help="retain unreferenced top-level defs entries")
+    export.add_argument("--keep-debug-layer", action="store_true", help="preserve validation overlay")
+    export.add_argument("--keep-construction", action="store_true", help="preserve construction geometry")
+    export.add_argument("--keep-inkscape-metadata", action="store_true", help="preserve Inkscape metadata")
+    export.add_argument("--keep-patchcreator-metadata", action="store_true", help="preserve PatchCreator metadata")
+    export.add_argument("--keep-unused-defs", action="store_true", help="do not prune unreferenced top-level defs")
     export.add_argument(
         "--text",
         choices=("preserve", "paths"),
         default="preserve",
-        help="text handling; paths currently fails explicitly pending a shaping backend",
+        help="live-text handling; paths currently requires a future font backend",
     )
     export.add_argument(
         "--knockout",
         action="store_true",
-        help="request physical overlap knockout (currently fails explicitly rather than guessing)",
+        help="apply overlap_policy=knockout as physical boolean subtraction",
     )
     export.set_defaults(func=_cmd_export)
 
