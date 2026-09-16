@@ -70,11 +70,31 @@ modified.
 
 ## Text outlining
 
-`--text paths` still fails with an actionable error. Correct text outlining
-requires font selection, shaping and glyph geometry; silently approximating it
-would make the compatibility output less reliable than the editable master. Use
-live text or explicitly convert text to paths in Inkscape until the font-aware
-export backend is added.
+`--text paths` converts supported live horizontal text to ordinary SVG glyph
+paths using deterministic font resolution, HarfBuzz shaping and FontTools
+outlines:
+
+```text
+patchcreator export mission.svg --text paths
+```
+
+This first slice supports direct-content horizontal `<text>` nodes, including
+PatchCreator straight/band layouts and auto-fit `textLength` with
+`lengthAdjust="spacing"`. It preserves baseline placement, text anchoring,
+fill/stroke/opacity and enclosing transforms. Font substitutions are reported as
+warnings so compatibility output does not silently change typeface.
+
+For fully reproducible automated output, the Python export API can provide an
+explicit local font file through `ExportOptions(font_path=...)`; font files are
+never copied into the project or repository. Without an explicit path the
+family/style/weight recorded on the SVG is resolved against local installed
+fonts.
+
+Curved/path-following `<textPath>` text, tspans, vertical writing, per-character
+position lists, non-normal font stretch and `spacingAndGlyphs` fitting currently
+fail explicitly instead of being approximated. Keep those nodes live with
+`--text preserve` until the follow-up path-placement slice lands. See
+`docs/text-outlining.md` for the shaping and reproducibility details.
 
 This division is intentional: the compatibility SVG should be simpler for tools
 such as PE-DESIGN while still being deterministic and reviewable.
