@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 
 from patchcreator.assets.normalize import _flatten_safe_leaf_transforms
 from patchcreator.svg.knockout import KnockoutResult, apply_knockout
+from patchcreator.svg.text_outline import TextOutlineError, TextOutlineResult, outline_straight_text
 
 SVG_NS = "http://www.w3.org/2000/svg"
 INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
@@ -42,6 +43,8 @@ class ExportOptions:
     prune_unused_defs: bool = True
     text_mode: str = "preserve"
     knockout: bool = False
+    font_path: str | Path | None = None
+    font_search_paths: tuple[str | Path, ...] = ()
 
     def __post_init__(self) -> None:
         if self.text_mode not in {"preserve", "paths"}:
@@ -58,6 +61,7 @@ class ExportResult:
     pruned_defs_count: int = 0
     knockout_changed_fragments: int = 0
     knockout_removed_fragments: int = 0
+    outlined_text_count: int = 0
     warnings: tuple[str, ...] = ()
 
 
@@ -304,16 +308,27 @@ def _prune_unused_defs(root: ET.Element) -> int:
 
 def export_svg_text(text: str, *, options: ExportOptions | None = None) -> ExportResult:
     options = options or ExportOptions()
-    if options.text_mode == "paths":
-        raise CompatibilityExportError(
-            "text-to-path export requires a font shaping/rendering backend; "
-            "preserve live text here or convert it explicitly in Inkscape"
-        )
 
     root = _parse_svg(text)
     removed_debug = _remove_debug_layers(root) if options.remove_debug_layer else 0
-    removed_construction = _remove_construction_geometry(root) if options.remove_construction else 0
     expanded = _expand_internal_uses(root) if options.expand_use else 0
+
+    if options.text_mode == "paths":
+        try:
+            text_result = outline_straight_text(
+                root,
+                font_path=options.font_path,
+                search_directories=options.font_search_paths or None,
+            )
+        except TextOutlineError as exc:
+            raise CompatibilityExportError(str(exc)) from exc
+    else:
+        text_result = TextOutlineResult(converted_count=0)
+
+    # Text outlining deliberately runs before construction removal.  The next
+    # text-on-path slice needs access to PatchCreator's live baseline paths while
+    # converting text, after which those authoring-only paths can be discarded.
+    removed_construction = _remove_construction_geometry(root) if options.remove_construction else 0
     flattened = _flatten_safe_leaf_transforms(root) if options.flatten_safe_transforms else 0
 
     if options.knockout:
@@ -338,7 +353,8 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
         pruned_defs_count=pruned,
         knockout_changed_fragments=knockout_result.changed_fragments,
         knockout_removed_fragments=knockout_result.removed_fragments,
-        warnings=knockout_result.warnings,
+        outlined_text_count=text_result.converted_count,
+        warnings=text_result.warnings + knockout_result.warnings,
     )
 
 
