@@ -3,10 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-import pytest
-
 from patchcreator.svg.export import (
-    CompatibilityExportError,
     ExportOptions,
     export_svg_file,
     export_svg_text,
@@ -76,10 +73,11 @@ def test_export_preserves_live_text_by_default():
     assert text.text == "PATCHCREATOR"
 
 
-def test_text_to_path_fails_explicitly_until_font_backend_exists():
-    svg = f'<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80"/>'
-    with pytest.raises(CompatibilityExportError, match="text-to-path"):
-        export_svg_text(svg, options=ExportOptions(text_mode="paths"))
+def test_text_to_path_is_a_noop_when_document_has_no_live_text():
+    svg = f'<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80"><circle cx="40" cy="40" r="5"/></svg>'
+    result = export_svg_text(svg, options=ExportOptions(text_mode="paths"))
+    assert result.outlined_text_count == 0
+    assert _root(result.svg).find(f".//{{{SVG_NS}}}circle") is not None
 
 
 def test_safe_leaf_transform_is_flattened():
