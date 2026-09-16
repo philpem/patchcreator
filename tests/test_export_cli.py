@@ -23,15 +23,21 @@ def test_cli_export_writes_default_compatibility_name(tmp_path: Path, capsys):
     assert "export:" in stdout
 
 
-def test_cli_export_still_refuses_text_to_path_without_font_backend(tmp_path: Path, capsys):
+def test_cli_export_text_paths_gives_actionable_missing_inkscape_error(
+    tmp_path: Path, capsys, monkeypatch
+):
     source = tmp_path / "master.svg"
     source.write_text(
         f'<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80"><text>LIVE</text></svg>',
         encoding="utf-8",
     )
+    monkeypatch.setattr(
+        "patchcreator.svg.text_outline.shutil.which",
+        lambda executable: None,
+    )
 
     assert main(["export", str(source), "--text", "paths"]) == 2
-    assert "text-to-path" in capsys.readouterr().err
+    assert "requires Inkscape" in capsys.readouterr().err
 
 
 def test_cli_export_knockout_applies_boolean_and_reports_counts(tmp_path: Path, capsys):
