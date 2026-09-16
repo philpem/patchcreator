@@ -76,12 +76,10 @@ def test_export_preserves_live_text_by_default():
     assert text.text == "PATCHCREATOR"
 
 
-def test_text_to_path_and_knockout_fail_explicitly():
+def test_text_to_path_fails_explicitly_until_font_backend_exists():
     svg = f'<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80"/>'
     with pytest.raises(CompatibilityExportError, match="text-to-path"):
         export_svg_text(svg, options=ExportOptions(text_mode="paths"))
-    with pytest.raises(CompatibilityExportError, match="knockout"):
-        export_svg_text(svg, options=ExportOptions(knockout=True))
 
 
 def test_safe_leaf_transform_is_flattened():
