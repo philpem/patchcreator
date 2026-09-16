@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:patchcreator="https://philpem.github.io/patchcreator/ns"
+     width="80mm" height="80mm" viewBox="0 0 80 80">
+  <rect width="80" height="80" fill="#101820"/>
+  <path id="title-baseline"
+        d="M 12,42 A 28,28 0 0 1 68,42"
+        fill="none" stroke="none"
+        patchcreator:construction-role="text-baseline"/>
+  <text id="title-text"
+        font-family="DejaVu Sans"
+        font-size="6"
+        font-weight="700"
+        fill="#f4c542"
+        text-anchor="middle">
+    <textPath href="#title-baseline"
+              startOffset="50%"
+              textLength="44"
+              lengthAdjust="spacing">PATCHCREATOR</textPath>
+  </text>
+</svg>
