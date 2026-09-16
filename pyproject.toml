@@ -12,10 +12,12 @@ authors = [
   {name = "Phil Pemberton"},
 ]
 dependencies = [
+  "fonttools>=4.55,<5",
   "pydantic>=2.7,<3",
   "pyshp>=2.3,<3",
   "ruamel.yaml>=0.18,<0.19",
   "shapely>=2.0,<3",
+  "uharfbuzz>=0.46,<1",
 ]
 
 [project.optional-dependencies]
