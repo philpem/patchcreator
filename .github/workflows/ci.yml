@@ -52,3 +52,23 @@ jobs:
           echo "different pixels: $difference"
           test "$status" -eq 0
           test "$difference" = "0"
+      - name: Outline curved live text through compatibility export
+        run: |
+          patchcreator export tests/data/text-outline.svg -o /tmp/text-outline.compat.svg --text paths
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('/tmp/text-outline.compat.svg').getroot()
+          local = lambda tag: tag.rsplit('}', 1)[-1]
+          assert not [element for element in root.iter() if local(element.tag) == 'text']
+          paths = [element for element in root.iter() if local(element.tag) == 'path']
+          assert paths, 'outlined export contains no path geometry'
+          PY
+          inkscape tests/data/text-outline.svg --export-area-page --export-width=800 --export-filename=/tmp/text-live.png
+          inkscape /tmp/text-outline.compat.svg --export-area-page --export-width=800 --export-filename=/tmp/text-paths.png
+          set +e
+          difference=$(compare -metric AE /tmp/text-live.png /tmp/text-paths.png null: 2>&1)
+          status=$?
+          set -e
+          echo "outlined text different pixels: $difference"
+          test "$status" -eq 0
+          test "$difference" = "0"
