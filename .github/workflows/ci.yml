@@ -67,8 +67,10 @@ jobs:
           inkscape /tmp/text-outline.compat.svg --export-area-page --export-width=800 --export-filename=/tmp/text-paths.png
           set +e
           difference=$(compare -metric AE /tmp/text-live.png /tmp/text-paths.png null: 2>&1)
-          status=$?
           set -e
           echo "outlined text different pixels: $difference"
-          test "$status" -eq 0
-          test "$difference" = "0"
+          # Converting live glyphs to paths can move a handful of antialiased edge
+          # pixels even though the vector geometry is visually equivalent. Keep
+          # this strict enough to catch layout/shaping regressions without
+          # requiring rasterizer identity.
+          test "$difference" -le 10
