@@ -70,11 +70,42 @@ modified.
 
 ## Text outlining
 
-`--text paths` still fails with an actionable error. Correct text outlining
-requires font selection, shaping and glyph geometry; silently approximating it
-would make the compatibility output less reliable than the editable master. Use
-live text or explicitly convert text to paths in Inkscape until the font-aware
-export backend is added.
+The master continues to keep text live and editable. When a downstream importer
+needs font-independent artwork, use:
+
+```text
+patchcreator export mission.svg --text paths
+```
+
+Text-to-path export uses the installed Inkscape executable as the shaping and
+outlining backend. This is intentional: Inkscape's Pango/font stack handles
+kerning, glyph substitution and PatchCreator's live `<textPath>` layouts in the
+same way the artist sees them in Inkscape, instead of PatchCreator approximating
+font metrics itself. The conversion happens on a temporary copy; the master SVG
+is never changed.
+
+`fontconfig`'s `fc-match` command is used before conversion to resolve each
+requested family/style/weight. A missing requested family therefore produces an
+actionable error rather than silently changing the patch. Install the requested
+font, add an installed fallback family to the SVG, or use the Python API with
+`ExportOptions(allow_font_substitution=True)` when a deliberate substitution is
+acceptable. Allowed substitutions and possible synthesized weight/slant choices
+are returned as export warnings.
+
+Inkscape and `fc-match` must both be on `PATH`. `PATCHCREATOR_INKSCAPE` and
+`PATCHCREATOR_FC_MATCH` may be set to alternative executable names or paths when
+needed. If no live text is present, `--text paths` is a no-op and does not require
+those external programs.
+
+Text-on-path construction geometry is deliberately removed *after* outlining,
+so a curved title is first shaped in its final position and only then has its
+hidden baseline discarded. The resulting compatibility SVG contains ordinary
+editable path geometry and no live `<text>` elements.
+
+Font outlining is only reproducible when the same font files and compatible
+Inkscape/Pango versions are available. For archival or CI-sensitive workflows,
+record the font family/style and environment used for the export; do not commit
+font files to this repository merely to make an example self-contained.
 
 This division is intentional: the compatibility SVG should be simpler for tools
 such as PE-DESIGN while still being deterministic and reviewable.
