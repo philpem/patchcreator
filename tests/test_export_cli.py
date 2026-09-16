@@ -23,15 +23,20 @@ def test_cli_export_writes_default_compatibility_name(tmp_path: Path, capsys):
     assert "export:" in stdout
 
 
-def test_cli_export_still_refuses_text_to_path_without_font_backend(tmp_path: Path, capsys):
+def test_cli_export_outlines_simple_text_with_generic_font(tmp_path: Path, capsys):
     source = tmp_path / "master.svg"
     source.write_text(
-        f'<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80"><text>LIVE</text></svg>',
+        f'<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80"><text id="title" x="10" y="20" font-family="sans-serif" font-size="5">LIVE</text></svg>',
         encoding="utf-8",
     )
 
-    assert main(["export", str(source), "--text", "paths"]) == 2
-    assert "text-to-path" in capsys.readouterr().err
+    assert main(["export", str(source), "--text", "paths"]) == 0
+    output = tmp_path / "master.compat.svg"
+    rendered = output.read_text(encoding="utf-8")
+    assert "<text" not in rendered
+    assert "<path" in rendered
+    captured = capsys.readouterr()
+    assert str(output) in captured.out
 
 
 def test_cli_export_knockout_applies_boolean_and_reports_counts(tmp_path: Path, capsys):
