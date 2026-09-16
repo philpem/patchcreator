@@ -1,7 +1,7 @@
 """Convert simple live SVG text into shaped editable glyph paths.
 
 This module is intentionally limited to horizontal text with direct text
-content.  Text-on-path/tspan placement is a separate geometry problem and is
+content. Text-on-path/tspan placement is a separate geometry problem and is
 rejected explicitly until the follow-up implementation lands.
 """
 
@@ -32,6 +32,11 @@ _FONT_ATTRS = {
     "writing-mode",
 }
 _TEXT_LAYOUT_ATTRS = {"x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust"}
+_GENERIC_FAMILIES = {
+    "sans serif": ("DejaVu Sans", "Noto Sans", "Liberation Sans", "Arial"),
+    "serif": ("DejaVu Serif", "Noto Serif", "Liberation Serif", "Times New Roman"),
+    "monospace": ("DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono", "Courier New"),
+}
 
 
 class TextOutlineError(ValueError):
@@ -82,16 +87,27 @@ def _number(raw: str | None, *, name: str, default: float = 0.0) -> float:
 
 
 def _family_request(raw: str | None) -> tuple[str, tuple[str, ...]]:
-    if not raw:
-        return "sans-serif", ()
-    names = []
-    for part in raw.split(","):
-        value = part.strip().strip("\"'")
-        if value:
-            names.append(value)
+    names: list[str] = []
+    if raw:
+        for part in raw.split(","):
+            value = part.strip().strip("\"'")
+            if value:
+                names.append(value)
     if not names:
-        return "sans-serif", ()
-    return names[0], tuple(names[1:])
+        names = ["sans-serif"]
+
+    first = names[0]
+    generic_key = " ".join(first.casefold().replace("-", " ").split())
+    generic = _GENERIC_FAMILIES.get(generic_key)
+    if generic is None:
+        return first, tuple(names[1:])
+
+    # Expand CSS generic families into concrete deterministic candidates before
+    # handing off to the lower-level resolver. This covers PatchCreator's own
+    # default `font-family="sans-serif"` output as well as ordinary SVG input.
+    ordered = list(generic)
+    ordered.extend(names[1:])
+    return ordered[0], tuple(ordered[1:])
 
 
 def _copy_group_attrs(text: ET.Element) -> dict[str, str]:
