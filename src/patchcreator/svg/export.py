@@ -15,6 +15,11 @@ import xml.etree.ElementTree as ET
 
 from patchcreator.assets.normalize import _flatten_safe_leaf_transforms
 from patchcreator.svg.knockout import KnockoutResult, apply_knockout
+from patchcreator.svg.text_outline import (
+    FontResolution,
+    TextOutlineError,
+    outline_text_with_inkscape,
+)
 
 SVG_NS = "http://www.w3.org/2000/svg"
 INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
@@ -41,6 +46,7 @@ class ExportOptions:
     strip_patchcreator_metadata: bool = True
     prune_unused_defs: bool = True
     text_mode: str = "preserve"
+    allow_font_substitution: bool = False
     knockout: bool = False
 
     def __post_init__(self) -> None:
@@ -58,6 +64,8 @@ class ExportResult:
     pruned_defs_count: int = 0
     knockout_changed_fragments: int = 0
     knockout_removed_fragments: int = 0
+    outlined_text_count: int = 0
+    font_resolutions: tuple[FontResolution, ...] = ()
     warnings: tuple[str, ...] = ()
 
 
@@ -304,16 +312,30 @@ def _prune_unused_defs(root: ET.Element) -> int:
 
 def export_svg_text(text: str, *, options: ExportOptions | None = None) -> ExportResult:
     options = options or ExportOptions()
-    if options.text_mode == "paths":
-        raise CompatibilityExportError(
-            "text-to-path export requires a font shaping/rendering backend; "
-            "preserve live text here or convert it explicitly in Inkscape"
-        )
-
     root = _parse_svg(text)
+
+    # Remove debug text before outlining, but keep construction paths until live
+    # text-on-path objects have been shaped and converted by Inkscape.
     removed_debug = _remove_debug_layers(root) if options.remove_debug_layer else 0
-    removed_construction = _remove_construction_geometry(root) if options.remove_construction else 0
     expanded = _expand_internal_uses(root) if options.expand_use else 0
+
+    if options.text_mode == "paths":
+        try:
+            outline_result = outline_text_with_inkscape(
+                root,
+                allow_substitution=options.allow_font_substitution,
+            )
+        except TextOutlineError as exc:
+            raise CompatibilityExportError(str(exc)) from exc
+        root = outline_result.root
+        # Inkscape may assign IDs to previously anonymous objects. Re-check the
+        # document before downstream rewriting so a collision never slips into
+        # the supposedly conservative compatibility file.
+        _id_index(root)
+    else:
+        outline_result = None
+
+    removed_construction = _remove_construction_geometry(root) if options.remove_construction else 0
     flattened = _flatten_safe_leaf_transforms(root) if options.flatten_safe_transforms else 0
 
     if options.knockout:
@@ -329,6 +351,7 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
 
     ET.indent(root, space="  ")
     xml = ET.tostring(root, encoding="unicode", xml_declaration=False) + "\n"
+    text_warnings = outline_result.warnings if outline_result is not None else ()
     return ExportResult(
         svg=xml,
         expanded_use_count=expanded,
@@ -338,7 +361,9 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
         pruned_defs_count=pruned,
         knockout_changed_fragments=knockout_result.changed_fragments,
         knockout_removed_fragments=knockout_result.removed_fragments,
-        warnings=knockout_result.warnings,
+        outlined_text_count=outline_result.converted_text_count if outline_result is not None else 0,
+        font_resolutions=outline_result.font_resolutions if outline_result is not None else (),
+        warnings=tuple(text_warnings) + tuple(knockout_result.warnings),
     )
 
 
