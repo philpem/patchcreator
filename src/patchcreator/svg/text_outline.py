@@ -72,6 +72,8 @@ def _property(element: ET.Element, style: dict[str, str], name: str, default: st
 def _number(raw: str | None, *, name: str, default: float = 0.0) -> float:
     if raw is None:
         return default
+    if name == "letter-spacing" and raw.strip().lower() == "normal":
+        return 0.0
     if not _NUMBER_RE.match(raw):
         raise TextOutlineError(
             f"straight text outlining currently requires a single unitless numeric {name}; got {raw!r}"
@@ -223,11 +225,11 @@ def _outline_one(
         for index, glyph in enumerate(run.glyphs):
             origin_x = pen_x + glyph.x_offset * scale
             origin_y = y - glyph.y_offset * scale
-            glyph_object = glyph_set.get(glyph.glyph_name)
-            if glyph_object is None:
+            if glyph.glyph_name not in glyph_set:
                 raise TextOutlineError(
                     f"resolved font no longer contains shaped glyph {glyph.glyph_name!r}"
                 )
+            glyph_object = glyph_set[glyph.glyph_name]
             pen = SVGPathPen(glyph_set)
             glyph_object.draw(pen)
             commands = pen.getCommands()
