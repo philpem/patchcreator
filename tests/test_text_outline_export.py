@@ -118,12 +118,12 @@ layers:
     assert group.findall(f"{{{SVG_NS}}}path")
 
 
-def test_textpath_is_rejected_without_destroying_live_text_semantics():
+def test_external_textpath_is_rejected_until_arbitrary_path_support_lands():
     svg = f"""<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80">
   <defs><path id="arc" d="M 10,20 A 20,20 0 0 1 50,20"/></defs>
   <text id="title" font-size="5"><textPath href="#arc">CURVED</textPath></text>
 </svg>"""
-    with pytest.raises(CompatibilityExportError, match="text-on-path outlining is not implemented"):
+    with pytest.raises(CompatibilityExportError, match="PatchCreator construction baselines"):
         export_svg_text(
             svg,
             options=ExportOptions(text_mode="paths", font_path=_system_font()),
