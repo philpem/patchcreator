@@ -23,6 +23,25 @@ jobs:
       - name: CLI smoke test
         run: patchcreator --help
 
+
+  gui-smoke:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxcb-cursor0
+      - name: Install PatchCreator with GUI
+        run: python -m pip install -e '.[dev,gui]'
+      - name: Headless GUI smoke test
+        run: pytest tests/test_gui_qt_smoke.py
+
   inkscape-roundtrip:
     runs-on: ubuntu-latest
     steps:
