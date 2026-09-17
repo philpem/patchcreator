@@ -22,7 +22,7 @@ patchcreator gui
 
 `patchcreator-gui` remains available as a direct GUI launcher and accepts the same optional design path.
 
-The GUI provides a YAML source editor, live SVG preview, render diagnostics, a layer/element hierarchy, structured placement controls, and Open/Save/Save As actions. Source edits are debounced before rendering. If an edit makes the document invalid, the diagnostics area shows the parser/render error while both the preview and hierarchy keep displaying the last valid document, so partially typed YAML does not make the visual reference disappear.
+The GUI provides a YAML source editor, live SVG preview, render diagnostics, a layer/element hierarchy, structured placement controls, starfield seed controls, and Open/Save/Save As actions. Source edits are debounced before rendering. If an edit makes the document invalid, the diagnostics area shows the parser/render error while both the preview and hierarchy keep displaying the last valid document, so partially typed YAML does not make the visual reference disappear.
 
 The hierarchy is derived afresh from the successfully parsed `DesignSpec`. It shows labels, component types, IDs, visibility and nested groups. Selecting an entry reports its identity/type/visibility in the status bar.
 
@@ -40,6 +40,18 @@ The fields accept the same scalar forms as the YAML document: plain numbers rema
 Applying a placement edit does **not** mutate a separate GUI object model. PatchCreator round-trips the current YAML with `ruamel.yaml`, updates only the selected element's `position`, puts the resulting YAML back into the source editor, and then runs the ordinary parse/render/validation/tree pipeline again. Unrelated comments, ordering and component-specific fields are retained by the round-trip representation. Nested elements are edited by ID in exactly the same source document.
 
 Relative and path-following placement modes remain visible in YAML but are deliberately not rewritten by this first structured editor. Layers are likewise not element-position targets. Drag placement can build on the same source-mutation path later.
+
+## Starfield seeds
+
+Selecting a `starfield` element enables the **Starfield seed** panel. It shows both the value configured in YAML and the exact seed used by the current successful render. The latter comes from the renderer's existing `patchcreator:seed` SVG metadata, so the GUI does not duplicate or second-guess starfield random-number generation.
+
+The three seed operations are:
+
+- **Lock current** — writes the seed used by the current render into YAML, making the displayed layout reproducible;
+- **Regenerate** — creates a fresh explicit unsigned 64-bit seed, writes it into YAML and rerenders immediately;
+- **Auto** — writes `seed: auto`, restoring the renderer behaviour where each render selects a fresh seed and reports it.
+
+As with placement, these controls round-trip the YAML source and then use the ordinary renderer. They do not store a hidden GUI-only seed. Locking is disabled if the selected starfield has no resolved seed metadata in the current valid render.
 
 ## Live embroidery validation
 
@@ -59,4 +71,4 @@ Opening a file sets its directory as the design source directory before renderin
 
 Qt is deliberately not a core dependency. Importing `patchcreator.gui` and using `PreviewSession` does not require PySide6; only launching the Qt application does. The top-level command dispatcher also imports the GUI launcher only when the `gui` command is selected, so ordinary CLI use does not load Qt. This keeps library/CLI installations lightweight and lets normal CI test the source/preview state independently of a desktop environment.
 
-Future GUI work under issue #22 can add clip/safe-margin controls, seed locking/regeneration, drag placement, click-through validation navigation and richer direct manipulation on top of the same YAML/session state.
+Future GUI work under issue #22 can add clip/safe-margin controls, drag placement, click-through validation navigation and richer direct manipulation on top of the same YAML/session state.

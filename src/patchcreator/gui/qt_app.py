@@ -78,11 +78,34 @@ class MainWindow(QMainWindow):
         self._placement_element_id: str | None = None
         self._set_placement_enabled(False)
 
+        self.seed_box = QGroupBox("Starfield seed")
+        seed_form = QFormLayout(self.seed_box)
+        self.seed_configured = QLabel("—")
+        self.seed_resolved = QLabel("—")
+        seed_form.addRow("Configured", self.seed_configured)
+        seed_form.addRow("Current render", self.seed_resolved)
+        seed_buttons = QWidget()
+        seed_buttons_layout = QHBoxLayout(seed_buttons)
+        seed_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.seed_lock = QPushButton("Lock current")
+        self.seed_regenerate = QPushButton("Regenerate")
+        self.seed_auto = QPushButton("Auto")
+        self.seed_lock.clicked.connect(self._lock_seed)
+        self.seed_regenerate.clicked.connect(self._regenerate_seed)
+        self.seed_auto.clicked.connect(self._auto_seed)
+        seed_buttons_layout.addWidget(self.seed_lock)
+        seed_buttons_layout.addWidget(self.seed_regenerate)
+        seed_buttons_layout.addWidget(self.seed_auto)
+        seed_form.addRow(seed_buttons)
+        self._seed_element_id: str | None = None
+        self._set_seed_enabled(False, resolved=False)
+
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.scene_tree, 1)
         left_layout.addWidget(self.placement_box, 0)
+        left_layout.addWidget(self.seed_box, 0)
 
         self.editor = QPlainTextEdit()
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
@@ -204,6 +227,12 @@ class MainWindow(QMainWindow):
         self.scene_tree.blockSignals(False)
         if selected_item is not None:
             self._load_placement_for_item(selected_item)
+            self._load_seed_for_item(selected_item)
+        else:
+            self._seed_element_id = None
+            self.seed_configured.setText("—")
+            self.seed_resolved.setText("—")
+            self._set_seed_enabled(False, resolved=False)
 
     def _find_tree_item(self, item: QTreeWidgetItem, node_id: str) -> QTreeWidgetItem | None:
         if item.text(2) == node_id:
@@ -272,12 +301,67 @@ class MainWindow(QMainWindow):
         except SourceEditError as exc:
             QMessageBox.warning(self, "Placement edit failed", str(exc))
             return
+        self._replace_source_and_render(updated)
 
+    def _set_seed_enabled(self, enabled: bool, *, resolved: bool) -> None:
+        self.seed_lock.setEnabled(enabled and resolved)
+        self.seed_regenerate.setEnabled(enabled)
+        self.seed_auto.setEnabled(enabled)
+
+    def _load_seed_for_item(self, current: QTreeWidgetItem) -> None:
+        self._seed_element_id = None
+        if current.text(1) != "starfield":
+            self.seed_configured.setText("—")
+            self.seed_resolved.setText("—")
+            self._set_seed_enabled(False, resolved=False)
+            return
+        element_id = current.text(2)
+        try:
+            state = self.session.starfield_seed(element_id)
+        except SourceEditError as exc:
+            self.seed_configured.setText(str(exc))
+            self.seed_resolved.setText("—")
+            self._set_seed_enabled(False, resolved=False)
+            return
+        resolved = self.session.resolved_seed(element_id)
+        self._seed_element_id = element_id
+        self.seed_configured.setText(state.configured)
+        self.seed_resolved.setText(str(resolved) if resolved is not None else "unavailable")
+        self._set_seed_enabled(True, resolved=resolved is not None)
+
+    def _replace_source_and_render(self, updated: str) -> None:
         self.editor.blockSignals(True)
         self.editor.setPlainText(updated)
         self.editor.blockSignals(False)
         self._update_title()
         self._show_result(self.session.render())
+
+    def _seed_edit(self, action: str) -> None:
+        element_id = self._seed_element_id
+        if element_id is None:
+            return
+        try:
+            if action == "lock":
+                updated = self.session.lock_current_seed(element_id)
+            elif action == "regenerate":
+                updated = self.session.regenerate_seed(element_id)
+            elif action == "auto":
+                updated = self.session.auto_seed(element_id)
+            else:  # pragma: no cover
+                raise ValueError(action)
+        except (SourceEditError, ValueError) as exc:
+            QMessageBox.warning(self, "Starfield seed edit failed", str(exc))
+            return
+        self._replace_source_and_render(updated)
+
+    def _lock_seed(self) -> None:
+        self._seed_edit("lock")
+
+    def _regenerate_seed(self) -> None:
+        self._seed_edit("regenerate")
+
+    def _auto_seed(self) -> None:
+        self._seed_edit("auto")
 
     def _tree_selection_changed(
         self,
@@ -288,12 +372,21 @@ class MainWindow(QMainWindow):
         if current is None:
             self._placement_element_id = None
             self._set_placement_enabled(False)
+            self._seed_element_id = None
+            self._set_seed_enabled(False, resolved=False)
             return
         self._load_placement_for_item(current)
-        self.statusBar().showMessage(
-            f"Selected {current.text(1)} {current.text(2)} — "
-            f"visible: {current.text(3)}"
-        )
+        self._load_seed_for_item(current)
+        if current.text(1) == "starfield":
+            resolved = self.session.resolved_seed(current.text(2))
+            self.statusBar().showMessage(
+                f"Selected starfield {current.text(2)} — configured seed: "
+                f"{self.seed_configured.text()}; resolved: {resolved if resolved is not None else 'unavailable'}"
+            )
+        else:
+            self.statusBar().showMessage(
+                f"Selected {current.text(1)} {current.text(2)} — visible: {current.text(3)}"
+            )
 
     def _show_result(self, result: PreviewResult) -> None:
         if result.svg is not None:
