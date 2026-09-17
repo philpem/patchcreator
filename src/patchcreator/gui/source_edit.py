@@ -1,7 +1,7 @@
 """Round-trip YAML helpers used by structured GUI editing.
 
 These helpers deliberately mutate the human-authored YAML source rather than a
-second GUI document model.  The edited text is then reparsed by the normal
+second GUI document model. The edited text is then reparsed by the normal
 PatchCreator loader/render pipeline.
 """
 
@@ -32,6 +32,13 @@ class PlacementState:
     first: str = ""
     second: str = ""
     self_anchor: str = "centre"
+
+
+@dataclass(frozen=True)
+class StarfieldSeedState:
+    element_id: str
+    configured: str
+    automatic: bool
 
 
 def _yaml() -> YAML:
@@ -76,6 +83,12 @@ def _find_element(root: CommentedMap, element_id: str) -> CommentedMap:
     if len(matches) > 1:
         raise SourceEditError(f"element id {element_id!r} is duplicated in the current YAML source")
     return matches[0]
+
+
+def _dump(yaml: YAML, root: CommentedMap) -> str:
+    output = StringIO()
+    yaml.dump(root, output)
+    return output.getvalue()
 
 
 def _display(value: object) -> str:
@@ -137,12 +150,7 @@ def set_element_position(
     first: str,
     second: str,
 ) -> str:
-    """Return YAML with one element's Cartesian/polar position updated.
-
-    ``first``/``second`` are x/y in Cartesian mode and angle/radius in polar
-    mode. Numeric strings become YAML numbers; unit/percentage/angle strings are
-    preserved as strings for the normal schema/unit parser.
-    """
+    """Return YAML with one element's Cartesian/polar position updated."""
 
     yaml, root = _load(text)
     element = _find_element(root, element_id)
@@ -173,6 +181,49 @@ def set_element_position(
             position["self_anchor"] = anchor
         element["position"] = position
 
-    output = StringIO()
-    yaml.dump(root, output)
-    return output.getvalue()
+    return _dump(yaml, root)
+
+
+def starfield_seed_state(text: str, element_id: str) -> StarfieldSeedState:
+    """Return the configured seed state for one starfield element."""
+
+    _, root = _load(text)
+    element = _find_element(root, element_id)
+    if element.get("type") != "starfield":
+        raise SourceEditError(f"element {element_id!r} is not a starfield")
+    raw = element.get("seed", "auto")
+    configured = _display(raw) or "auto"
+    return StarfieldSeedState(
+        element_id=element_id,
+        configured=configured,
+        automatic=configured.strip().lower() == "auto",
+    )
+
+
+def set_starfield_seed(text: str, element_id: str, seed: int | str) -> str:
+    """Return YAML with a starfield seed changed to explicit or ``auto``."""
+
+    yaml, root = _load(text)
+    element = _find_element(root, element_id)
+    if element.get("type") != "starfield":
+        raise SourceEditError(f"element {element_id!r} is not a starfield")
+
+    if isinstance(seed, int):
+        if seed < 0 or seed >= 1 << 64:
+            raise SourceEditError("starfield seed must fit in an unsigned 64-bit value")
+        value: int | str = seed
+    else:
+        raw = seed.strip()
+        if raw.lower() == "auto":
+            value = "auto"
+        else:
+            try:
+                parsed = int(raw, 0)
+            except ValueError as exc:
+                raise SourceEditError("starfield seed must be 'auto' or an integer") from exc
+            if parsed < 0 or parsed >= 1 << 64:
+                raise SourceEditError("starfield seed must fit in an unsigned 64-bit value")
+            value = parsed
+
+    element["seed"] = value
+    return _dump(yaml, root)
