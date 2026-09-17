@@ -51,6 +51,7 @@ layers:
 class DragSvgWidget(QSvgWidget):
     """QSvgWidget that reports left-button drag coordinates to its owner."""
 
+    drag_started = Signal(float, float)
     drag_moved = Signal(float, float)
     drag_finished = Signal(float, float)
 
@@ -61,6 +62,8 @@ class DragSvgWidget(QSvgWidget):
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API name
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
+            position = event.position()
+            self.drag_started.emit(position.x(), position.y())
             event.accept()
             return
         super().mousePressEvent(event)
@@ -187,9 +190,11 @@ class MainWindow(QMainWindow):
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.preview = DragSvgWidget()
         self.preview.setMinimumSize(320, 320)
+        self.preview.drag_started.connect(self._preview_drag_started)
         self.preview.drag_moved.connect(self._preview_drag_moved)
         self.preview.drag_finished.connect(self._preview_drag_finished)
         self._drag_element_id: str | None = None
+        self._drag_active = False
         self.diagnostics = QPlainTextEdit()
         self.diagnostics.setReadOnly(True)
         self.diagnostics.setMaximumBlockCount(300)
@@ -471,7 +476,22 @@ class MainWindow(QMainWindow):
         except (SourceEditError, ValueError):
             return None
 
+    def _preview_drag_started(self, x: float, y: float) -> None:
+        self._drag_active = False
+        element_id = self._drag_element_id
+        if element_id is None:
+            self.statusBar().showMessage(
+                "Select a default/Cartesian/polar element in the scene tree before dragging"
+            )
+            return
+        if self._preview_canvas_point(x, y) is None:
+            self.statusBar().showMessage("Drag must start inside the rendered SVG")
+            return
+        self._drag_active = True
+
     def _preview_drag_moved(self, x: float, y: float) -> None:
+        if not self._drag_active:
+            return
         element_id = self._drag_element_id
         if element_id is None:
             return
@@ -499,11 +519,10 @@ class MainWindow(QMainWindow):
             )
 
     def _preview_drag_finished(self, x: float, y: float) -> None:
+        active = self._drag_active
+        self._drag_active = False
         element_id = self._drag_element_id
-        if element_id is None:
-            self.statusBar().showMessage(
-                "Select a default/Cartesian/polar element in the scene tree before dragging"
-            )
+        if not active or element_id is None:
             return
         point = self._preview_canvas_point(x, y)
         if point is None:
