@@ -29,7 +29,7 @@ gui = [
 ]
 
 [project.scripts]
-patchcreator = "patchcreator.cli:main"
+patchcreator = "patchcreator.dispatch:main"
 patchcreator-gui = "patchcreator.gui.app:main"
 
 [project.entry-points."patchcreator.components"]
