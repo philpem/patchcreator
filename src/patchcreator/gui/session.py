@@ -1,6 +1,6 @@
 """GUI-independent editable YAML preview state.
 
-The GUI intentionally owns only source text and file state.  Parsing, scene
+The GUI intentionally owns only source text and file state. Parsing, scene
 construction and SVG generation are delegated to the normal PatchCreator
 library pipeline so there is no second GUI document model to keep in sync.
 """
@@ -11,7 +11,43 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from patchcreator.config.loader import DesignLoadError, loads_design
+from patchcreator.config.schema import DesignSpec, ElementSpec, LayerSpec
 from patchcreator.svg.writer import render_design
+
+
+@dataclass(frozen=True)
+class SceneTreeItem:
+    id: str
+    label: str
+    kind: str
+    visible: bool
+    children: tuple["SceneTreeItem", ...] = ()
+
+
+def _element_tree(element: ElementSpec) -> SceneTreeItem:
+    return SceneTreeItem(
+        id=element.id,
+        label=element.label or element.id,
+        kind=element.type,
+        visible=element.visible,
+        children=tuple(_element_tree(child) for child in element.elements),
+    )
+
+
+def _layer_tree(layer: LayerSpec) -> SceneTreeItem:
+    return SceneTreeItem(
+        id=layer.id,
+        label=layer.label or layer.id,
+        kind="layer",
+        visible=layer.visible,
+        children=tuple(_element_tree(element) for element in layer.elements),
+    )
+
+
+def scene_tree(design: DesignSpec) -> tuple[SceneTreeItem, ...]:
+    """Return an immutable hierarchy derived directly from ``DesignSpec``."""
+
+    return tuple(_layer_tree(layer) for layer in design.layers)
 
 
 @dataclass(frozen=True)
@@ -19,6 +55,7 @@ class PreviewResult:
     svg: str | None
     warnings: tuple[str, ...] = ()
     error: str | None = None
+    tree: tuple[SceneTreeItem, ...] = ()
 
     @property
     def valid(self) -> bool:
@@ -32,6 +69,7 @@ class PreviewSession:
         self.text = text
         self.source_path = Path(source_path) if source_path is not None else None
         self.last_valid_svg: str | None = None
+        self.last_valid_tree: tuple[SceneTreeItem, ...] = ()
         self.last_warnings: tuple[str, ...] = ()
         self.last_error: str | None = None
         self.dirty = False
@@ -52,18 +90,21 @@ class PreviewSession:
             if self.source_path is not None:
                 design.set_source_dir(self.source_path.parent)
             rendered = render_design(design)
+            tree = scene_tree(design)
         except (DesignLoadError, OSError, ValueError) as exc:
             self.last_error = str(exc)
             return PreviewResult(
                 svg=self.last_valid_svg,
                 warnings=self.last_warnings,
                 error=self.last_error,
+                tree=self.last_valid_tree,
             )
 
         self.last_valid_svg = rendered.svg
+        self.last_valid_tree = tree
         self.last_warnings = rendered.warnings
         self.last_error = None
-        return PreviewResult(svg=rendered.svg, warnings=rendered.warnings)
+        return PreviewResult(svg=rendered.svg, warnings=rendered.warnings, tree=tree)
 
     def load(self, path: str | Path) -> PreviewResult:
         source_path = Path(path)
