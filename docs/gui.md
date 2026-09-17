@@ -41,6 +41,14 @@ Applying a placement edit does **not** mutate a separate GUI object model. Patch
 
 Relative and path-following placement modes remain visible in YAML but are deliberately not rewritten by this first structured editor. Layers are likewise not element-position targets. Drag placement can build on the same source-mutation path later.
 
+## Drag placement
+
+Select an element in the scene tree and drag anywhere within the rendered SVG preview to reposition that selected element. The pointer is mapped through the preview's aspect-ratio letterboxing into the patch's physical millimetre canvas, and the new position is committed to YAML when the mouse button is released. Drags that end in the blank letterbox area leave the document unchanged.
+
+Elements with no explicit position become Cartesian. Existing Cartesian elements stay Cartesian, with `x`/`y` measured from patch centre. Existing polar elements stay polar and use the same 0°=up, clockwise angle convention as the YAML format; radius is written in physical millimetres. The element's existing `self_anchor` is retained, so the dragged point corresponds to that anchor rather than silently changing alignment.
+
+The first drag implementation deliberately refuses relative/path-following positions and elements whose ancestors establish a non-default coordinate frame. Those cases depend on semantic targets or transformed local frames; PatchCreator reports them as unavailable rather than rewriting them as superficially similar Cartesian coordinates. The normal Placement panel remains available for explicit source-level editing.
+
 ## Safe margins and clipping
 
 The **Canvas safe margin** panel edits the document-wide safe area. Fixed mode stores a physical millimetre margin. Percentage mode stores a percentage together with optional minimum/maximum millimetre clamps; switching modes rewrites the mapping so fields that are invalid in the new mode are removed rather than leaving schema-invalid YAML.
@@ -79,4 +87,4 @@ Opening a file sets its directory as the design source directory before renderin
 
 Qt is deliberately not a core dependency. Importing `patchcreator.gui` and using `PreviewSession` does not require PySide6; only launching the Qt application does. The top-level command dispatcher also imports the GUI launcher only when the `gui` command is selected, so ordinary CLI use does not load Qt. This keeps library/CLI installations lightweight and lets normal CI test the source/preview state independently of a desktop environment.
 
-Future GUI work under issue #22 can add drag placement, click-through validation navigation and richer direct manipulation on top of the same YAML/session state.
+Future GUI work can add click-through validation navigation and richer direct manipulation on top of the same YAML/session state.
