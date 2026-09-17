@@ -76,6 +76,7 @@ class PreviewSession:
         self.source_path = Path(source_path) if source_path is not None else None
         self.validation_enabled = False
         self.last_valid_svg: str | None = None
+        self.last_display_svg: str | None = None
         self.last_valid_tree: tuple[SceneTreeItem, ...] = ()
         self.last_warnings: tuple[str, ...] = ()
         self.last_error: str | None = None
@@ -145,7 +146,7 @@ class PreviewSession:
         except (DesignLoadError, OSError, ValueError) as exc:
             self.last_error = str(exc)
             return PreviewResult(
-                svg=self.last_valid_svg,
+                svg=self.last_display_svg or self.last_valid_svg,
                 warnings=self.last_warnings,
                 error=self.last_error,
                 tree=self.last_valid_tree,
@@ -162,6 +163,7 @@ class PreviewSession:
             design,
             rendered.svg,
         )
+        self.last_display_svg = display_svg
         return PreviewResult(
             svg=display_svg,
             warnings=rendered.warnings,
