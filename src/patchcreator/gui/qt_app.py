@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QByteArray, QTimer, Qt
+from PySide6.QtCore import QByteArray, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 
+from .drag_edit import drag_position, viewport_to_canvas
 from .session import PreviewResult, PreviewSession, SceneTreeItem
 from .source_edit import SourceEditError
 
@@ -45,6 +46,41 @@ layers:
     label: Artwork
     elements: []
 """
+
+
+class DragSvgWidget(QSvgWidget):
+    """QSvgWidget that reports left-button drag coordinates to its owner."""
+
+    drag_moved = Signal(float, float)
+    drag_finished = Signal(float, float)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._dragging = False
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API name
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt API name
+        if self._dragging and event.buttons() & Qt.MouseButton.LeftButton:
+            position = event.position()
+            self.drag_moved.emit(position.x(), position.y())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt API name
+        if self._dragging and event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+            position = event.position()
+            self.drag_finished.emit(position.x(), position.y())
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -149,8 +185,11 @@ class MainWindow(QMainWindow):
 
         self.editor = QPlainTextEdit()
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.preview = QSvgWidget()
+        self.preview = DragSvgWidget()
         self.preview.setMinimumSize(320, 320)
+        self.preview.drag_moved.connect(self._preview_drag_moved)
+        self.preview.drag_finished.connect(self._preview_drag_finished)
+        self._drag_element_id: str | None = None
         self.diagnostics = QPlainTextEdit()
         self.diagnostics.setReadOnly(True)
         self.diagnostics.setMaximumBlockCount(300)
@@ -269,11 +308,15 @@ class MainWindow(QMainWindow):
             self._load_placement_for_item(selected_item)
             self._load_clip_for_item(selected_item)
             self._load_seed_for_item(selected_item)
+            self._load_drag_for_item(selected_item)
         else:
             self._placement_element_id = None
             self._set_placement_enabled(False)
             self._clip_element_id = None
             self._set_clip_enabled(False)
+            self._drag_element_id = None
+            self.preview.setCursor(Qt.CursorShape.ArrowCursor)
+            self.preview.setToolTip("Select an editable element in the scene tree to drag it")
             self._seed_element_id = None
             self.seed_configured.setText("—")
             self.seed_resolved.setText("—")
@@ -384,6 +427,96 @@ class MainWindow(QMainWindow):
             )
         except SourceEditError as exc:
             QMessageBox.warning(self, "Clip edit failed", str(exc))
+            return
+        self._replace_source_and_render(updated)
+
+    def _load_drag_for_item(self, current: QTreeWidgetItem) -> None:
+        self._drag_element_id = None
+        if current.text(1) == "layer":
+            self.preview.setCursor(Qt.CursorShape.ArrowCursor)
+            self.preview.setToolTip("Layers cannot be dragged")
+            return
+
+        element_id = current.text(2)
+        try:
+            size = self.session.canvas_size()
+            drag_position(
+                self.session.text,
+                element_id,
+                canvas_x=size.width / 2.0,
+                canvas_y=size.height / 2.0,
+            )
+        except (SourceEditError, ValueError) as exc:
+            self.preview.setCursor(Qt.CursorShape.ArrowCursor)
+            self.preview.setToolTip(f"Drag unavailable: {exc}")
+            return
+
+        self._drag_element_id = element_id
+        self.preview.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.preview.setToolTip(
+            f"Drag selected element {element_id!r}; position is committed on mouse release"
+        )
+
+    def _preview_canvas_point(self, x: float, y: float) -> tuple[float, float] | None:
+        try:
+            size = self.session.canvas_size()
+            return viewport_to_canvas(
+                x,
+                y,
+                viewport_width=float(self.preview.width()),
+                viewport_height=float(self.preview.height()),
+                canvas_width=size.width,
+                canvas_height=size.height,
+            )
+        except (SourceEditError, ValueError):
+            return None
+
+    def _preview_drag_moved(self, x: float, y: float) -> None:
+        element_id = self._drag_element_id
+        if element_id is None:
+            return
+        point = self._preview_canvas_point(x, y)
+        if point is None:
+            self.statusBar().showMessage("Drag pointer is outside the rendered SVG")
+            return
+        try:
+            position = drag_position(
+                self.session.text,
+                element_id,
+                canvas_x=point[0],
+                canvas_y=point[1],
+            )
+        except SourceEditError as exc:
+            self.statusBar().showMessage(f"Drag unavailable: {exc}")
+            return
+        if position.mode == "polar":
+            self.statusBar().showMessage(
+                f"Drag {element_id}: angle {position.first:.2f}°, radius {position.second:.2f} mm"
+            )
+        else:
+            self.statusBar().showMessage(
+                f"Drag {element_id}: x {position.first:.2f} mm, y {position.second:.2f} mm"
+            )
+
+    def _preview_drag_finished(self, x: float, y: float) -> None:
+        element_id = self._drag_element_id
+        if element_id is None:
+            self.statusBar().showMessage(
+                "Select a default/Cartesian/polar element in the scene tree before dragging"
+            )
+            return
+        point = self._preview_canvas_point(x, y)
+        if point is None:
+            self.statusBar().showMessage("Drag ended outside the rendered SVG; position unchanged")
+            return
+        try:
+            updated = self.session.drag_to_canvas(
+                element_id,
+                canvas_x=point[0],
+                canvas_y=point[1],
+            )
+        except (SourceEditError, ValueError) as exc:
+            QMessageBox.warning(self, "Drag placement failed", str(exc))
             return
         self._replace_source_and_render(updated)
 
@@ -518,12 +651,16 @@ class MainWindow(QMainWindow):
             self._set_placement_enabled(False)
             self._clip_element_id = None
             self._set_clip_enabled(False)
+            self._drag_element_id = None
+            self.preview.setCursor(Qt.CursorShape.ArrowCursor)
+            self.preview.setToolTip("Select an editable element in the scene tree to drag it")
             self._seed_element_id = None
             self._set_seed_enabled(False, resolved=False)
             return
         self._load_placement_for_item(current)
         self._load_clip_for_item(current)
         self._load_seed_for_item(current)
+        self._load_drag_for_item(current)
         if current.text(1) == "starfield":
             resolved = self.session.resolved_seed(current.text(2))
             self.statusBar().showMessage(
