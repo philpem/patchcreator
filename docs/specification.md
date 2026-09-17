@@ -49,7 +49,7 @@ All geometry and embroidery-safety decisions shall be evaluated in physical unit
 
 YAML is the initial authoring format. JSON may be used internally for schema tooling but shall not be the preferred human-authored representation.
 
-A machine-readable schema should be provided so editors and the future GUI can validate the same model.
+A machine-readable JSON Schema shall be derived from the same Pydantic models used by the loader rather than maintained separately. It is available through `patchcreator schema` (or `patchcreator schema -o FILE`) for editor/tooling integration. Because component implementations and plugins extend the common element envelope dynamically, component-specific extra fields remain open in the structural JSON Schema and receive their semantic validation through the normal loader/component pipeline.
 
 Example skeleton:
 
