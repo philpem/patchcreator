@@ -41,6 +41,14 @@ Applying a placement edit does **not** mutate a separate GUI object model. Patch
 
 Relative and path-following placement modes remain visible in YAML but are deliberately not rewritten by this first structured editor. Layers are likewise not element-position targets. Drag placement can build on the same source-mutation path later.
 
+## Safe margins and clipping
+
+The **Canvas safe margin** panel edits the document-wide safe area. Fixed mode stores a physical millimetre margin. Percentage mode stores a percentage together with optional minimum/maximum millimetre clamps; switching modes rewrites the mapping so fields that are invalid in the new mode are removed rather than leaving schema-invalid YAML.
+
+Selecting an element also enables the **Clip** panel. An unchecked **Explicit clip mapping** means the element has no `clip:` mapping and therefore inherits the document/component default. When explicit clipping is enabled, the target may be `inherit`, `none`, `patch`, `safe-area`, or an editable `custom:<element-id>` target. The **Enabled** checkbox preserves an explicit but temporarily disabled clip.
+
+Clip offset is expressed in millimetres: a positive **Inset / outset** value contracts the clip, while a negative value expands it. As with placement and seed controls, applying either panel changes the YAML source through the round-trip editor and immediately feeds the result back through the ordinary render/validation/tree pipeline.
+
 ## Starfield seeds
 
 Selecting a `starfield` element enables the **Starfield seed** panel. It shows both the value configured in YAML and the exact seed used by the current successful render. The latter comes from the renderer's existing `patchcreator:seed` SVG metadata, so the GUI does not duplicate or second-guess starfield random-number generation.
@@ -71,4 +79,4 @@ Opening a file sets its directory as the design source directory before renderin
 
 Qt is deliberately not a core dependency. Importing `patchcreator.gui` and using `PreviewSession` does not require PySide6; only launching the Qt application does. The top-level command dispatcher also imports the GUI launcher only when the `gui` command is selected, so ordinary CLI use does not load Qt. This keeps library/CLI installations lightweight and lets normal CI test the source/preview state independently of a desktop environment.
 
-Future GUI work under issue #22 can add clip/safe-margin controls, drag placement, click-through validation navigation and richer direct manipulation on top of the same YAML/session state.
+Future GUI work under issue #22 can add drag placement, click-through validation navigation and richer direct manipulation on top of the same YAML/session state.
