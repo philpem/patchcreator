@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 
 from .geometry import _root_transform_mm
 from .model import Finding, ValidationReport
-from .svg import load_svg
+from .svg import load_svg, parse_svg_text
 
 SVG_NS = "http://www.w3.org/2000/svg"
 INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
@@ -124,9 +124,6 @@ def _append_geometry_marker(
 
     points = finding.points_mm or ()
     if len(points) >= 2:
-        # The first two points are the nearest pair for gap findings. Keeping
-        # the connector explicit makes a 0.4 mm clearance visible even when the
-        # surrounding artwork is visually busy.
         first, second = points[0], points[1]
         ET.SubElement(
             parent,
@@ -168,12 +165,7 @@ def add_debug_layer(
     layer_id: str = "patchcreator-validation",
     layer_label: str = "PatchCreator Validation",
 ) -> ET.Element:
-    """Append/replace a visible top Inkscape layer describing ``findings``.
-
-    Finding coordinates are expressed in physical millimetres. The layer gets
-    the inverse document-to-mm transform, so its child geometry can stay in mm
-    even when the source uses CSS pixels or an arbitrary viewBox.
-    """
+    """Append/replace a visible top Inkscape layer describing ``findings``."""
     style = style or OverlayStyle()
 
     for child in list(root):
@@ -194,10 +186,6 @@ def add_debug_layer(
         },
     )
 
-    # Geometry markers are positioned over the artwork. Findings without
-    # physical bounds/points (currently most stroke-only findings) still get a
-    # selectable ID-linked callout in a compact legend at the document's top
-    # left, rather than mutating the original object merely to highlight it.
     unlocated: list[tuple[int, Finding, str]] = []
     for index, finding in enumerate(findings):
         colour = style.colour_for(finding)
@@ -254,6 +242,20 @@ def add_debug_layer(
             text.text = f"{finding.severity.upper()}: {finding.code}: {_target_text(finding)}"
 
     return layer
+
+
+def debug_svg_text(
+    text: str,
+    report: ValidationReport,
+    *,
+    style: OverlayStyle | None = None,
+) -> str:
+    """Return an in-memory SVG copy with the removable validation layer added."""
+
+    root = parse_svg_text(text, source=report.source)
+    add_debug_layer(root, report.findings, style=style)
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode", xml_declaration=False) + "\n"
 
 
 def write_debug_svg(

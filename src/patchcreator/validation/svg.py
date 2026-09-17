@@ -245,18 +245,29 @@ def iter_visible_strokes(root: ET.Element) -> Iterator[StrokeGeometry]:
         )
 
 
+def parse_svg_text(
+    text: str,
+    *,
+    source: str | Path | None = None,
+) -> ET.Element:
+    """Parse SVG text with the same safety/shape checks used for file input."""
+
+    label = str(source) if source is not None else "SVG text"
+    if "<!DOCTYPE" in text.upper():
+        raise SvgInspectionError("SVG files with a DOCTYPE are not accepted for validation")
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise SvgInspectionError(f"cannot parse SVG {label}: {exc}") from exc
+    if _local_name(root.tag) != "svg":
+        raise SvgInspectionError(f"{label} is not an SVG document")
+    return root
+
+
 def load_svg(path: str | Path) -> tuple[Path, ET.Element]:
     source = Path(path)
     try:
         text = source.read_text(encoding="utf-8")
     except OSError as exc:
         raise SvgInspectionError(f"cannot read SVG {source}: {exc}") from exc
-    if "<!DOCTYPE" in text.upper():
-        raise SvgInspectionError("SVG files with a DOCTYPE are not accepted for validation")
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError as exc:
-        raise SvgInspectionError(f"cannot parse SVG {source}: {exc}") from exc
-    if _local_name(root.tag) != "svg":
-        raise SvgInspectionError(f"{source} is not an SVG document")
-    return source, root
+    return source, parse_svg_text(text, source=source)
