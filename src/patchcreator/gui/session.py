@@ -22,6 +22,7 @@ from .clip_edit import (
     set_element_clip,
     set_safe_margin,
 )
+from .drag_edit import CanvasSize, canvas_size, set_drag_position
 from .source_edit import (
     PlacementMode,
     PlacementState,
@@ -130,6 +131,25 @@ class PreviewSession:
 
     def placement(self, element_id: str) -> PlacementState:
         return placement_state(self.text, element_id)
+
+    def canvas_size(self) -> CanvasSize:
+        return canvas_size(self.text)
+
+    def drag_to_canvas(
+        self,
+        element_id: str,
+        *,
+        canvas_x: float,
+        canvas_y: float,
+    ) -> str:
+        updated = set_drag_position(
+            self.text,
+            element_id,
+            canvas_x=canvas_x,
+            canvas_y=canvas_y,
+        )
+        self.set_text(updated)
+        return updated
 
     def set_placement(
         self,
