@@ -104,6 +104,7 @@ patchcreator export examples/basic-round-patch.svg --knockout --text paths
 Main commands include:
 
 ```text
+patchcreator schema [-o design-schema.json]
 patchcreator render design.yaml
 patchcreator check artwork.svg
 patchcreator normalize asset.svg
@@ -115,6 +116,8 @@ patchcreator data list
 patchcreator data fetch natural-earth-land-110m
 patchcreator gui [design.yaml]
 ```
+
+`patchcreator schema` emits JSON Schema 2020-12 directly from the authoritative Pydantic design model for editor/tooling integration. Component-specific element fields remain open because built-in and third-party component renderers extend the common element envelope dynamically; the normal loader/render pipeline remains authoritative for those semantic fields.
 
 Third-party datasets are never silently downloaded or committed into the
 PatchCreator source tree. See [`docs/external-data.md`](docs/external-data.md)

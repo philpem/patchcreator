@@ -14,6 +14,7 @@ import sys
 from patchcreator import __version__
 from patchcreator.assets import AssetReport, inspect_asset, normalize_asset
 from patchcreator.components import UnsupportedComponentError
+from patchcreator.config import design_json_schema_text
 from patchcreator.config.loader import DesignLoadError, load_design
 from patchcreator.config.schema import ProfileSpec
 from patchcreator.data import (
@@ -34,6 +35,22 @@ from patchcreator.validation import (
     check_svg,
     write_debug_svg,
 )
+
+
+
+def _cmd_schema(args: argparse.Namespace) -> int:
+    text = design_json_schema_text()
+    if args.output:
+        output = Path(args.output)
+        try:
+            output.write_text(text, encoding="utf-8")
+        except OSError as exc:
+            print(f"cannot write schema {output}: {exc}", file=sys.stderr)
+            return 2
+        print(output)
+    else:
+        print(text, end="")
+    return 0
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
@@ -357,6 +374,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    schema = subparsers.add_parser("schema", help="emit JSON Schema for design YAML")
+    schema.add_argument("-o", "--output", metavar="FILE", help="write schema to FILE instead of stdout")
+    schema.set_defaults(func=_cmd_schema)
+
     render = subparsers.add_parser("render", help="render a YAML design to SVG")
     render.add_argument("design", help="input YAML design")
     render.add_argument("-o", "--output", help="output SVG path (default: input name with .svg)")
@@ -385,7 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--text",
         choices=("preserve", "paths"),
         default="preserve",
-        help="live-text handling; paths currently requires a future font backend",
+        help="live-text handling; paths outlines text using resolved installed fonts",
     )
     export.add_argument(
         "--knockout",
