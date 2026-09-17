@@ -13,6 +13,15 @@ from patchcreator.profiles import ProfileError, resolve_profile
 from patchcreator.svg.writer import render_design
 from patchcreator.validation import ValidationReport, check_svg_text, debug_svg_text
 
+from .clip_edit import (
+    ClipState,
+    MarginMode,
+    SafeMarginState,
+    clip_state,
+    safe_margin_state,
+    set_element_clip,
+    set_safe_margin,
+)
 from .source_edit import (
     PlacementMode,
     PlacementState,
@@ -60,8 +69,6 @@ def scene_tree(design: DesignSpec) -> tuple[SceneTreeItem, ...]:
 
 
 def resolved_starfield_seed(svg: str | None, element_id: str) -> int | None:
-    """Read the renderer-resolved seed from PatchCreator SVG metadata."""
-
     if not svg:
         return None
     try:
@@ -138,6 +145,50 @@ class PreviewSession:
             mode=mode,
             first=first,
             second=second,
+        )
+        self.set_text(updated)
+        return updated
+
+    def safe_margin(self) -> SafeMarginState:
+        return safe_margin_state(self.text)
+
+    def set_safe_margin(
+        self,
+        *,
+        mode: MarginMode,
+        value: float | int | str,
+        minimum: float | int | str | None = None,
+        maximum: float | int | str | None = None,
+    ) -> str:
+        updated = set_safe_margin(
+            self.text,
+            mode=mode,
+            value=value,
+            minimum=minimum,
+            maximum=maximum,
+        )
+        self.set_text(updated)
+        return updated
+
+    def clip(self, element_id: str) -> ClipState:
+        return clip_state(self.text, element_id)
+
+    def set_clip(
+        self,
+        element_id: str,
+        *,
+        explicit: bool,
+        target: str = "inherit",
+        enabled: bool = True,
+        inset: float | int | str = 0.0,
+    ) -> str:
+        updated = set_element_clip(
+            self.text,
+            element_id,
+            explicit=explicit,
+            target=target,
+            enabled=enabled,
+            inset=inset,
         )
         self.set_text(updated)
         return updated
