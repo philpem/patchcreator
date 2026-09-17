@@ -1,6 +1,13 @@
 # Initial GitHub Issue Backlog
 
-Suggested milestones:
+> **Historical document.** This was the bootstrap implementation plan used to
+> bring PatchCreator from an empty repository through the initial compositor,
+> procedural components, validation/export pipeline and first GUI editor. All
+> numbered items below have now been implemented and their corresponding GitHub
+> issues closed. Keep this file as design history; use current GitHub issues for
+> new roadmap work rather than treating this list as an active backlog.
+
+Completed bootstrap milestones:
 
 - **v0.1 Core scene/compositor**
 - **v0.2 Procedural patch primitives**
@@ -8,7 +15,7 @@ Suggested milestones:
 - **v0.4 Asset workflow and compatibility export**
 - **Future: GUI editor**
 
-Suggested labels: `architecture`, `cli`, `scene-graph`, `svg`, `inkscape`, `component`, `embroidery`, `validation`, `assets`, `documentation`, `future-gui`.
+Historical suggested labels: `architecture`, `cli`, `scene-graph`, `svg`, `inkscape`, `component`, `embroidery`, `validation`, `assets`, `documentation`, `future-gui`.
 
 ## 1. Create Python package and CLI skeleton
 
