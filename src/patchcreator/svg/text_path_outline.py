@@ -1,13 +1,11 @@
-"""Outline PatchCreator circular textPath layouts into ordinary SVG paths.
+"""Outline SVG textPath layouts into ordinary shaped SVG glyph paths.
 
-This slice deliberately accepts only the single circular SVG arc baseline emitted
-by PatchCreator's top/bottom arc text component. Arbitrary external paths remain
-for a later compatibility-export pass.
+Path parsing/sampling is delegated to ``patchcreator.geometry.svg_path_sampler``
+so text outlining owns glyph placement, not another SVG path parser.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
 from pathlib import Path
 import re
@@ -16,6 +14,7 @@ from typing import Iterable
 
 from fontTools.pens.svgPathPen import SVGPathPen
 
+from patchcreator.geometry import SvgPathSamplingError, svg_path_sampler
 from patchcreator.text import FontRequest, FontResolutionError, open_ttfont, resolve_font, shape_text
 from patchcreator.svg.text_outline import (
     TextOutlineError,
@@ -31,104 +30,9 @@ from patchcreator.svg.text_outline import (
 )
 
 SVG_NS = "http://www.w3.org/2000/svg"
-PATCHCREATOR_NS = "https://philpem.github.io/patchcreator/ns"
 XLINK_NS = "http://www.w3.org/1999/xlink"
-
-_NUM = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
-_ARC_RE = re.compile(
-    rf"^\s*M\s*({_NUM})\s*,?\s*({_NUM})\s*"
-    rf"A\s*({_NUM})\s*,?\s*({_NUM})\s*({_NUM})\s*([01])\s*([01])\s*"
-    rf"({_NUM})\s*,?\s*({_NUM})\s*$",
-    re.IGNORECASE,
-)
-
-
-@dataclass(frozen=True)
-class _CircularArc:
-    cx: float
-    cy: float
-    radius: float
-    theta_start: float
-    delta_theta: float
-
-    @property
-    def length(self) -> float:
-        return abs(self.delta_theta) * self.radius
-
-    def sample(self, distance: float) -> tuple[float, float, float, float]:
-        if self.length <= 0:
-            raise TextOutlineError("textPath baseline has zero length")
-        fraction = distance / self.length
-        theta = self.theta_start + self.delta_theta * fraction
-        x = self.cx + self.radius * math.cos(theta)
-        y = self.cy + self.radius * math.sin(theta)
-        direction = 1.0 if self.delta_theta >= 0 else -1.0
-        tx = -math.sin(theta) * direction
-        ty = math.cos(theta) * direction
-        return x, y, tx, ty
-
-
-def _parse_circular_arc(path: ET.Element) -> _CircularArc:
-    if _local_name(path.tag) != "path":
-        raise TextOutlineError("PatchCreator arc textPath baseline must reference an SVG path")
-    if path.get("transform"):
-        raise TextOutlineError("transformed textPath baselines are not supported in the circular-arc slice")
-    role = path.get(f"{{{PATCHCREATOR_NS}}}construction-role") or path.get(
-        "data-patchcreator-construction-role"
-    )
-    if role != "text-baseline":
-        raise TextOutlineError(
-            "textPath outlining currently accepts only PatchCreator construction baselines"
-        )
-
-    match = _ARC_RE.fullmatch(path.get("d", ""))
-    if match is None:
-        raise TextOutlineError(
-            "textPath outlining currently accepts only PatchCreator's single circular M…A… baseline"
-        )
-    x1, y1, rx, ry, rotation, large, sweep, x2, y2 = match.groups()
-    x1f, y1f = float(x1), float(y1)
-    x2f, y2f = float(x2), float(y2)
-    rxf, ryf = abs(float(rx)), abs(float(ry))
-    if rxf <= 0 or ryf <= 0 or abs(rxf - ryf) > 1e-8:
-        raise TextOutlineError("textPath outlining currently requires a circular arc")
-    if abs(float(rotation)) > 1e-8:
-        raise TextOutlineError("rotated elliptical textPath baselines are not supported yet")
-    if math.hypot(x2f - x1f, y2f - y1f) <= 1e-12:
-        raise TextOutlineError("full-circle/coincident-endpoint textPath baselines are not supported yet")
-
-    radius = rxf
-    dx = (x1f - x2f) / 2.0
-    dy = (y1f - y2f) / 2.0
-    ratio = (dx * dx + dy * dy) / (radius * radius)
-    if ratio > 1.0:
-        radius *= math.sqrt(ratio)
-
-    numerator = max(0.0, radius * radius - dx * dx - dy * dy)
-    denominator = dx * dx + dy * dy
-    if denominator <= 0:
-        raise TextOutlineError("textPath baseline cannot determine a circular centre")
-    coefficient = math.sqrt(numerator / denominator)
-    large_flag = large == "1"
-    sweep_flag = sweep == "1"
-    if large_flag == sweep_flag:
-        coefficient = -coefficient
-
-    cx = (x1f + x2f) / 2.0 + coefficient * dy
-    cy = (y1f + y2f) / 2.0 - coefficient * dx
-    theta1 = math.atan2((y1f - cy) / radius, (x1f - cx) / radius)
-    theta2 = math.atan2((y2f - cy) / radius, (x2f - cx) / radius)
-    delta = theta2 - theta1
-    if sweep_flag and delta < 0:
-        delta += math.tau
-    elif not sweep_flag and delta > 0:
-        delta -= math.tau
-    if large_flag and abs(delta) < math.pi:
-        delta += math.tau if sweep_flag else -math.tau
-    elif not large_flag and abs(delta) > math.pi:
-        delta += -math.tau if sweep_flag else math.tau
-
-    return _CircularArc(cx=cx, cy=cy, radius=radius, theta_start=theta1, delta_theta=delta)
+_CLOSED_RE = re.compile(r"[zZ]\s*$")
+_EPSILON = 1e-7
 
 
 def _start_offset(raw: str | None, path_length: float) -> float:
@@ -154,44 +58,35 @@ def _id_index(root: ET.Element) -> dict[str, ET.Element]:
     return result
 
 
-def _outline_arc_node(
+def _baseline_sampler(path: ET.Element):
+    if _local_name(path.tag) != "path":
+        raise TextOutlineError("textPath must reference an SVG path")
+    if path.get("transform"):
+        raise TextOutlineError(
+            "transformed textPath baselines are not supported yet; apply the transform to the path geometry first"
+        )
+    path_data = path.get("d", "")
+    try:
+        sampler = svg_path_sampler(path_data)
+    except SvgPathSamplingError as exc:
+        raise TextOutlineError(f"cannot sample textPath baseline: {exc}") from exc
+    length = sampler.length()
+    if length <= 0:
+        raise TextOutlineError("textPath baseline has zero length")
+    return sampler, length, bool(_CLOSED_RE.search(path_data))
+
+
+def _shape_run(
     text_node: ET.Element,
-    text_path: ET.Element,
+    text: str,
     *,
-    index: dict[str, ET.Element],
     explicit_font_path: str | Path | None,
     search_directories: Iterable[str | Path] | None,
-    used_ids: set[str],
-) -> tuple[ET.Element, tuple[str, ...]]:
-    if len(text_path):
-        raise TextOutlineError("nested tspan/child content inside textPath is not supported yet")
-    if text_node.text and text_node.text.strip():
-        raise TextOutlineError("mixed direct text and textPath content is not supported")
-    if text_path.tail and text_path.tail.strip():
-        raise TextOutlineError("mixed content after textPath is not supported")
-    if text_path.get("style"):
-        raise TextOutlineError("per-textPath style overrides are not supported in the circular-arc slice")
-    if text_path.get("method", "align") != "align":
-        raise TextOutlineError("textPath method other than 'align' is not supported")
-    if text_path.get("spacing", "auto") not in {"auto", "exact"}:
-        raise TextOutlineError("unsupported textPath spacing mode")
-
-    href = text_path.get("href") or text_path.get(f"{{{XLINK_NS}}}href")
-    if not href or not href.startswith("#"):
-        raise TextOutlineError("textPath must reference an internal PatchCreator baseline")
-    baseline = index.get(href[1:])
-    if baseline is None:
-        raise TextOutlineError(f"textPath baseline {href!r} does not exist")
-    arc = _parse_circular_arc(baseline)
-
-    text = text_path.text or ""
-    if not text:
-        raise TextOutlineError("cannot outline an empty textPath")
+):
     style = _style(text_node)
     writing_mode = (_property(text_node, style, "writing-mode", "horizontal-tb") or "horizontal-tb").lower()
     if writing_mode not in {"horizontal-tb", "lr", "lr-tb"}:
         raise TextOutlineError("vertical/non-horizontal textPath outlining is not supported")
-
     font_size = _number(_property(text_node, style, "font-size", "16"), name="font-size", default=16.0)
     if font_size <= 0:
         raise TextOutlineError("SVG text font-size must be positive")
@@ -208,30 +103,69 @@ def _outline_arc_node(
         run = shape_text(text, resolved, direction=_property(text_node, style, "direction"))
     except FontResolutionError as exc:
         element_id = text_node.get("id") or "<text>"
-        raise TextOutlineError(f"cannot outline arc text {element_id!r}: {exc}") from exc
+        raise TextOutlineError(f"cannot outline textPath {element_id!r}: {exc}") from exc
     if run.y_advance != 0 or run.direction in {"ttb", "btt"}:
         raise TextOutlineError("vertical HarfBuzz runs are not supported on textPath")
+    return style, font_size, resolved, run
+
+
+def _outline_path_node(
+    text_node: ET.Element,
+    text_path: ET.Element,
+    *,
+    index: dict[str, ET.Element],
+    explicit_font_path: str | Path | None,
+    search_directories: Iterable[str | Path] | None,
+    used_ids: set[str],
+) -> tuple[ET.Element, tuple[str, ...]]:
+    if len(text_path):
+        raise TextOutlineError("nested tspan/child content inside textPath is not supported yet")
+    if text_node.text and text_node.text.strip():
+        raise TextOutlineError("mixed direct text and textPath content is not supported")
+    if text_path.tail and text_path.tail.strip():
+        raise TextOutlineError("mixed content after textPath is not supported")
+    if text_path.get("style"):
+        raise TextOutlineError("per-textPath style overrides are not supported yet")
+    if text_path.get("method", "align") != "align":
+        raise TextOutlineError("textPath method other than 'align' is not supported")
+    if text_path.get("spacing", "auto") not in {"auto", "exact"}:
+        raise TextOutlineError("unsupported textPath spacing mode")
+
+    href = text_path.get("href") or text_path.get(f"{{{XLINK_NS}}}href")
+    if not href or not href.startswith("#"):
+        raise TextOutlineError("textPath must reference an internal SVG path")
+    baseline = index.get(href[1:])
+    if baseline is None:
+        raise TextOutlineError(f"textPath baseline {href!r} does not exist")
+    sampler, path_length, closed = _baseline_sampler(baseline)
+
+    text = text_path.text or ""
+    if not text:
+        raise TextOutlineError("cannot outline an empty textPath")
+    style, font_size, resolved, run = _shape_run(
+        text_node,
+        text,
+        explicit_font_path=explicit_font_path,
+        search_directories=search_directories,
+    )
 
     scale = font_size / run.units_per_em
     glyph_count = len(run.glyphs)
-    letter_spacing = _number(
-        _property(text_node, style, "letter-spacing", "0"), name="letter-spacing"
-    )
-    spacing_step = letter_spacing
+    spacing_step = _number(_property(text_node, style, "letter-spacing", "0"), name="letter-spacing")
     natural_advance = run.x_advance * scale + spacing_step * max(0, glyph_count - 1)
 
     raw_text_length = text_path.get("textLength")
     if raw_text_length is not None:
         if text_path.get("lengthAdjust", "spacing") != "spacing":
             raise TextOutlineError(
-                "arc text outlining currently supports textLength only with lengthAdjust='spacing'"
+                "textPath outlining currently supports textLength only with lengthAdjust='spacing'"
             )
         target = _number(raw_text_length, name="textLength")
         if target <= 0:
             raise TextOutlineError("SVG textLength must be positive")
         if glyph_count <= 1:
             if abs(target - abs(natural_advance)) > 1e-9:
-                raise TextOutlineError("cannot satisfy textLength=spacing for a single-glyph arc run")
+                raise TextOutlineError("cannot satisfy textLength=spacing for a single-glyph path run")
         else:
             spacing_step += (target - natural_advance) / (glyph_count - 1)
             natural_advance = target
@@ -240,8 +174,16 @@ def _outline_arc_node(
     if anchor not in {"start", "middle", "end"}:
         raise TextOutlineError(f"unsupported SVG text-anchor {anchor!r}")
     anchor_fraction = {"start": 0.0, "middle": 0.5, "end": 1.0}[anchor]
-    run_start = _start_offset(text_path.get("startOffset"), arc.length) - natural_advance * anchor_fraction
+    run_start = _start_offset(text_path.get("startOffset"), path_length) - natural_advance * anchor_fraction
     baseline_shift = _number(text_node.get("dy"), name="dy")
+
+    if closed:
+        if natural_advance > path_length + _EPSILON:
+            raise TextOutlineError("textPath run is longer than its closed baseline")
+    elif run_start < -_EPSILON or run_start + natural_advance > path_length + _EPSILON:
+        raise TextOutlineError(
+            "textPath run falls outside its open baseline; adjust startOffset/text-anchor/fit"
+        )
 
     group = ET.Element(_q("g"), _copy_group_attrs(text_node))
     element_id = text_node.get("id")
@@ -253,16 +195,23 @@ def _outline_arc_node(
         glyph_set = ttfont.getGlyphSet()
         for glyph_index, glyph in enumerate(run.glyphs):
             distance = pen_distance + glyph.x_offset * scale
-            if distance < -1e-7 or distance > arc.length + 1e-7:
+            if closed:
+                distance %= path_length
+            elif distance < -_EPSILON or distance > path_length + _EPSILON:
                 raise TextOutlineError(
-                    f"arc text glyph {glyph_index} falls outside its baseline; adjust startOffset/fit"
+                    f"textPath glyph {glyph_index} falls outside its baseline; adjust startOffset/fit"
                 )
-            distance = min(max(distance, 0.0), arc.length)
-            x, y, tx, ty = arc.sample(distance)
+            distance = min(max(distance, 0.0), path_length)
+            sample = sampler.sample(distance / path_length)
+            tx, ty = sample.tangent
+            magnitude = math.hypot(tx, ty)
+            if magnitude <= 1e-12:
+                raise TextOutlineError(f"textPath tangent is degenerate at glyph {glyph_index}")
+            tx, ty = tx / magnitude, ty / magnitude
             normal_x, normal_y = -ty, tx
             normal_offset = baseline_shift - glyph.y_offset * scale
-            origin_x = x + normal_x * normal_offset
-            origin_y = y + normal_y * normal_offset
+            origin_x = sample.point[0] + normal_x * normal_offset
+            origin_y = sample.point[1] + normal_y * normal_offset
 
             if glyph.glyph_name not in glyph_set:
                 raise TextOutlineError(
@@ -281,9 +230,7 @@ def _outline_arc_node(
                     ),
                 }
                 if element_id:
-                    attrs["id"] = _unique_id(
-                        f"{element_id}-glyph-{glyph_index:04d}", used_ids
-                    )
+                    attrs["id"] = _unique_id(f"{element_id}-glyph-{glyph_index:04d}", used_ids)
                 ET.SubElement(group, _q("path"), attrs)
 
             pen_distance += glyph.x_advance * scale
@@ -301,7 +248,11 @@ def outline_arc_text(
     font_path: str | Path | None = None,
     search_directories: Iterable[str | Path] | None = None,
 ) -> TextOutlineResult:
-    """Replace supported PatchCreator circular `<textPath>` nodes with paths."""
+    """Replace supported SVG `<textPath>` nodes with shaped path geometry.
+
+    The historical function name remains for compatibility; the implementation
+    now accepts any single-subpath baseline supported by ``svg_path_sampler``.
+    """
 
     index = _id_index(root)
     used_ids = set(index)
@@ -319,7 +270,7 @@ def outline_arc_text(
                 continue
             if len(text_paths) != 1 or len(child) != 1:
                 raise TextOutlineError("textPath outlining currently requires one direct textPath child")
-            replacement, produced_warnings = _outline_arc_node(
+            replacement, produced_warnings = _outline_path_node(
                 child,
                 text_paths[0],
                 index=index,
