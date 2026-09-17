@@ -1,28 +1,48 @@
 # PatchCreator
 
-PatchCreator is a Python library and CLI for constructing layered, editable, mission-patch-style SVG artwork from procedural components and reusable SVG assets.
+PatchCreator is a Python library, CLI and optional desktop editor for constructing
+layered, editable, mission-patch-style SVG artwork from procedural components
+and reusable SVG assets.
 
-The primary workflow is:
+The normal workflow is:
 
 1. describe a patch declaratively in YAML;
 2. generate an embroidery-aware, Inkscape-friendly master SVG;
-3. refine the artwork in Inkscape;
-4. export an optimised SVG for Brother PE-DESIGN or produce embroidery output with Ink/Stitch.
+3. validate physical geometry and inspect any debug overlay;
+4. refine the artwork in Inkscape if required;
+5. create a conservative compatibility SVG for downstream import or continue
+   into Ink/Stitch/PE-DESIGN.
 
-The project deliberately targets patch-like composition rather than replacing a general vector editor.
+The project deliberately targets patch-like composition rather than replacing a
+general vector editor or stitch-plan generator.
 
 ## Current status
 
-Early implementation. The repository contains the YAML model/loader, scene graph and placement system, physical patch/safe-area geometry, editable/clipped SVG output, profile handling, semantic stars and deterministic decorative starfields. Earth, trajectory/text components and embroidery validation are still tracked as roadmap issues.
+The initial implementation roadmap is complete. The repository now includes:
+
+- the versioned YAML model/loader, layered scene graph and physical-mm geometry;
+- Cartesian, polar, anchor-relative and path-following placement;
+- reversible patch/safe/custom clipping with physical inset/outset;
+- layered machine/design-intent embroidery profiles;
+- semantic stars and deterministic decorative starfields;
+- Natural-Earth-backed orthographic Earth rendering;
+- editable trajectories, elliptical orbits and front/back occlusion;
+- live curved/path text plus font-aware text-to-path compatibility export;
+- reusable SVG assets with anchors and semantic colour roles;
+- independent SVG normalisation and geometry validation;
+- validation debug overlays, overlap diagnostics and physical knockout export;
+- an optional PySide6 GUI using the same YAML/render pipeline, with live preview,
+  scene tree, placement/drag controls, safe-margin/clip editing, validation
+  overlays and starfield seed controls.
 
 See:
 
 - [`docs/specification.md`](docs/specification.md) — design requirements and behaviour;
-- [`docs/architecture.md`](docs/architecture.md) — proposed Python/scene-graph architecture;
+- [`docs/architecture.md`](docs/architecture.md) — package and scene-graph architecture;
 - [`docs/external-data.md`](docs/external-data.md) — third-party dataset acquisition/cache policy;
-- [`docs/initial-issues.md`](docs/initial-issues.md) — implementation backlog;
-- [`examples/minimal-patch.yaml`](examples/minimal-patch.yaml) — currently renderable example;
-- [`examples/basic-round-patch.yaml`](examples/basic-round-patch.yaml) — target end-to-end procedural example.
+- [`docs/gui.md`](docs/gui.md) — optional GUI installation and editing workflow;
+- [`examples/README.md`](examples/README.md) — runnable example catalogue;
+- [`docs/initial-issues.md`](docs/initial-issues.md) — historical bootstrap backlog.
 
 ## Development install
 
@@ -34,41 +54,81 @@ pytest
 patchcreator --help
 ```
 
-Render the minimal example with:
+Install the optional GUI with:
+
+```text
+python -m pip install -e '.[dev,gui]'
+patchcreator gui
+```
+
+## Quick start
+
+Render the small self-contained example:
 
 ```text
 patchcreator render examples/minimal-patch.yaml
 ```
 
-The richer `basic-round-patch.yaml` deliberately references components which are not all implemented yet. During development it can be rendered with unsupported elements skipped:
+The full 80 mm demonstrator uses Natural Earth land data. Dataset acquisition is
+an explicit action and rendering never silently downloads it:
 
 ```text
-patchcreator render --allow-unsupported examples/basic-round-patch.yaml
+patchcreator data fetch natural-earth-land-110m
+patchcreator render examples/basic-round-patch.yaml
+```
+
+Open the same YAML document in the optional live editor:
+
+```text
+patchcreator gui examples/basic-round-patch.yaml
+```
+
+After rendering, run the independent embroidery-geometry validator and create a
+separate visual diagnostic copy:
+
+```text
+patchcreator check examples/basic-round-patch.svg \
+  --debug-svg examples/basic-round-patch.debug.svg
+```
+
+Create a conservative downstream SVG, optionally applying physical overlap
+knockout and font-aware text outlining:
+
+```text
+patchcreator export examples/basic-round-patch.svg
+patchcreator export examples/basic-round-patch.svg --knockout --text paths
 ```
 
 ## Command-line interface
+
+Main commands include:
 
 ```text
 patchcreator render design.yaml
 patchcreator check artwork.svg
 patchcreator normalize asset.svg
+patchcreator export artwork.svg
 patchcreator profiles list
+patchcreator profiles show intent standard-patch
+patchcreator profiles effective design.yaml
 patchcreator data list
 patchcreator data fetch natural-earth-land-110m
+patchcreator gui [design.yaml]
 ```
 
-`render`, profile inspection and external-data management are implemented. `check` and `normalize` are present as stable CLI entry points while their underlying subsystems are built.
-
-Third-party datasets are never silently downloaded or committed into the PatchCreator source tree. See [`docs/external-data.md`](docs/external-data.md) for cache locations, source declarations and the explicit fetch workflow.
+Third-party datasets are never silently downloaded or committed into the
+PatchCreator source tree. See [`docs/external-data.md`](docs/external-data.md)
+for cache locations, source declarations and the explicit fetch workflow.
 
 ## Design priorities
 
 - physical sizing in millimetres;
-- embroidery-safe geometry by default, with tunable/disableable filtering;
+- embroidery-aware geometry with profile-driven, overridable thresholds;
 - editable layered SVG and strong Inkscape integration;
 - Cartesian, polar, anchor-relative and path-following placement;
-- reversible SVG clipping and explicit embroidery-overlap handling;
+- reversible clipping and explicit embroidery-overlap handling;
 - procedural Earth, starfields, trajectories/orbits, borders and curved text;
 - reusable hand-cleaned SVG artwork with semantic anchors and colour roles;
-- a validation subsystem usable independently of the compositor;
-- an eventual GUI editor with live preview, built on the same document model.
+- validation usable independently on non-PatchCreator SVG;
+- conservative compatibility export without making the editable master destructive;
+- one YAML/source model shared by the library, CLI and GUI.
