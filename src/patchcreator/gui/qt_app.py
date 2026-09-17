@@ -9,10 +9,17 @@ from PySide6.QtCore import QByteArray, QTimer, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QPushButton,
     QSplitter,
     QStatusBar,
     QTreeWidget,
@@ -23,6 +30,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtSvgWidgets import QSvgWidget
 
 from .session import PreviewResult, PreviewSession, SceneTreeItem
+from .source_edit import SourceEditError
 
 
 _DEFAULT_DOCUMENT = """version: 0.1
@@ -42,13 +50,39 @@ class MainWindow(QMainWindow):
     def __init__(self, source_path: Path | None = None) -> None:
         super().__init__()
         self.session = PreviewSession(_DEFAULT_DOCUMENT)
-        self.setMinimumSize(1050, 600)
+        self.setMinimumSize(1150, 650)
 
         self.scene_tree = QTreeWidget()
         self.scene_tree.setHeaderLabels(["Name", "Type", "ID", "Visible"])
-        self.scene_tree.setMinimumWidth(230)
+        self.scene_tree.setMinimumWidth(250)
         self.scene_tree.setAlternatingRowColors(True)
         self.scene_tree.currentItemChanged.connect(self._tree_selection_changed)
+
+        self.placement_box = QGroupBox("Placement")
+        placement_form = QFormLayout(self.placement_box)
+        self.placement_target = QLabel("Select an element")
+        self.placement_mode = QComboBox()
+        self.placement_mode.addItems(["cartesian", "polar"])
+        self.placement_mode.currentTextChanged.connect(self._placement_mode_changed)
+        self.placement_first_label = QLabel("x")
+        self.placement_second_label = QLabel("y")
+        self.placement_first = QLineEdit()
+        self.placement_second = QLineEdit()
+        self.placement_apply = QPushButton("Apply placement")
+        self.placement_apply.clicked.connect(self._apply_placement)
+        placement_form.addRow("Element", self.placement_target)
+        placement_form.addRow("Mode", self.placement_mode)
+        placement_form.addRow(self.placement_first_label, self.placement_first)
+        placement_form.addRow(self.placement_second_label, self.placement_second)
+        placement_form.addRow(self.placement_apply)
+        self._placement_element_id: str | None = None
+        self._set_placement_enabled(False)
+
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.addWidget(self.scene_tree, 1)
+        left_layout.addWidget(self.placement_box, 0)
 
         self.editor = QPlainTextEdit()
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
@@ -60,7 +94,7 @@ class MainWindow(QMainWindow):
         self.diagnostics.setMaximumHeight(160)
 
         horizontal = QSplitter(Qt.Orientation.Horizontal)
-        horizontal.addWidget(self.scene_tree)
+        horizontal.addWidget(left_panel)
         horizontal.addWidget(self.editor)
         horizontal.addWidget(self.preview)
         horizontal.setStretchFactor(0, 0)
@@ -168,6 +202,8 @@ class MainWindow(QMainWindow):
         for column in range(4):
             self.scene_tree.resizeColumnToContents(column)
         self.scene_tree.blockSignals(False)
+        if selected_item is not None:
+            self._load_placement_for_item(selected_item)
 
     def _find_tree_item(self, item: QTreeWidgetItem, node_id: str) -> QTreeWidgetItem | None:
         if item.text(2) == node_id:
@@ -178,6 +214,71 @@ class MainWindow(QMainWindow):
                 return found
         return None
 
+    def _set_placement_enabled(self, enabled: bool) -> None:
+        self.placement_mode.setEnabled(enabled)
+        self.placement_first.setEnabled(enabled)
+        self.placement_second.setEnabled(enabled)
+        self.placement_apply.setEnabled(enabled)
+
+    def _placement_mode_changed(self, mode: str) -> None:
+        if mode == "polar":
+            self.placement_first_label.setText("angle")
+            self.placement_second_label.setText("radius")
+        else:
+            self.placement_first_label.setText("x")
+            self.placement_second_label.setText("y")
+
+    def _load_placement_for_item(self, current: QTreeWidgetItem) -> None:
+        node_id = current.text(2)
+        kind = current.text(1)
+        self._placement_element_id = None
+        if kind == "layer":
+            self.placement_target.setText("Layers are not positioned")
+            self._set_placement_enabled(False)
+            return
+        try:
+            placement = self.session.placement(node_id)
+        except SourceEditError as exc:
+            self.placement_target.setText(str(exc))
+            self._set_placement_enabled(False)
+            return
+
+        self._placement_element_id = node_id
+        self.placement_target.setText(f"{current.text(0)} ({node_id})")
+        self._set_placement_enabled(True)
+        mode = placement.mode or "cartesian"
+        self.placement_mode.blockSignals(True)
+        self.placement_mode.setCurrentText(mode)
+        self.placement_mode.blockSignals(False)
+        self._placement_mode_changed(mode)
+        if placement.mode is None:
+            self.placement_first.setText("0")
+            self.placement_second.setText("0")
+        else:
+            self.placement_first.setText(placement.first)
+            self.placement_second.setText(placement.second)
+
+    def _apply_placement(self) -> None:
+        element_id = self._placement_element_id
+        if element_id is None:
+            return
+        try:
+            updated = self.session.set_placement(
+                element_id,
+                mode=self.placement_mode.currentText(),  # type: ignore[arg-type]
+                first=self.placement_first.text(),
+                second=self.placement_second.text(),
+            )
+        except SourceEditError as exc:
+            QMessageBox.warning(self, "Placement edit failed", str(exc))
+            return
+
+        self.editor.blockSignals(True)
+        self.editor.setPlainText(updated)
+        self.editor.blockSignals(False)
+        self._update_title()
+        self._show_result(self.session.render())
+
     def _tree_selection_changed(
         self,
         current: QTreeWidgetItem | None,
@@ -185,7 +286,10 @@ class MainWindow(QMainWindow):
     ) -> None:
         del previous
         if current is None:
+            self._placement_element_id = None
+            self._set_placement_enabled(False)
             return
+        self._load_placement_for_item(current)
         self.statusBar().showMessage(
             f"Selected {current.text(1)} {current.text(2)} — "
             f"visible: {current.text(3)}"
