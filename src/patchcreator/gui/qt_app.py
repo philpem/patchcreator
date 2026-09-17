@@ -9,6 +9,7 @@ from PySide6.QtCore import QByteArray, QTimer, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -78,6 +79,43 @@ class MainWindow(QMainWindow):
         self._placement_element_id: str | None = None
         self._set_placement_enabled(False)
 
+        self.margin_box = QGroupBox("Canvas safe margin")
+        margin_form = QFormLayout(self.margin_box)
+        self.margin_mode = QComboBox()
+        self.margin_mode.addItems(["fixed", "percent"])
+        self.margin_mode.currentTextChanged.connect(self._margin_mode_changed)
+        self.margin_value = QLineEdit()
+        self.margin_minimum = QLineEdit()
+        self.margin_maximum = QLineEdit()
+        self.margin_apply = QPushButton("Apply safe margin")
+        self.margin_apply.clicked.connect(self._apply_safe_margin)
+        margin_form.addRow("Mode", self.margin_mode)
+        margin_form.addRow("Value", self.margin_value)
+        margin_form.addRow("Minimum", self.margin_minimum)
+        margin_form.addRow("Maximum", self.margin_maximum)
+        margin_form.addRow(self.margin_apply)
+        self._margin_mode_changed("fixed")
+
+        self.clip_box = QGroupBox("Clip")
+        clip_form = QFormLayout(self.clip_box)
+        self.clip_explicit = QCheckBox("Explicit clip mapping")
+        self.clip_explicit.toggled.connect(self._clip_explicit_toggled)
+        self.clip_target = QComboBox()
+        self.clip_target.setEditable(True)
+        self.clip_target.addItems(["inherit", "none", "patch", "safe-area"])
+        self.clip_enabled = QCheckBox("Enabled")
+        self.clip_enabled.setChecked(True)
+        self.clip_inset = QLineEdit("0")
+        self.clip_apply = QPushButton("Apply clip")
+        self.clip_apply.clicked.connect(self._apply_clip)
+        clip_form.addRow(self.clip_explicit)
+        clip_form.addRow("Target", self.clip_target)
+        clip_form.addRow(self.clip_enabled)
+        clip_form.addRow("Inset / outset", self.clip_inset)
+        clip_form.addRow(self.clip_apply)
+        self._clip_element_id: str | None = None
+        self._set_clip_enabled(False)
+
         self.seed_box = QGroupBox("Starfield seed")
         seed_form = QFormLayout(self.seed_box)
         self.seed_configured = QLabel("—")
@@ -104,7 +142,9 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.scene_tree, 1)
+        left_layout.addWidget(self.margin_box, 0)
         left_layout.addWidget(self.placement_box, 0)
+        left_layout.addWidget(self.clip_box, 0)
         left_layout.addWidget(self.seed_box, 0)
 
         self.editor = QPlainTextEdit()
@@ -227,8 +267,13 @@ class MainWindow(QMainWindow):
         self.scene_tree.blockSignals(False)
         if selected_item is not None:
             self._load_placement_for_item(selected_item)
+            self._load_clip_for_item(selected_item)
             self._load_seed_for_item(selected_item)
         else:
+            self._placement_element_id = None
+            self._set_placement_enabled(False)
+            self._clip_element_id = None
+            self._set_clip_enabled(False)
             self._seed_element_id = None
             self.seed_configured.setText("—")
             self.seed_resolved.setText("—")
@@ -242,6 +287,105 @@ class MainWindow(QMainWindow):
             if found is not None:
                 return found
         return None
+
+    def _margin_mode_changed(self, mode: str) -> None:
+        percent = mode == "percent"
+        self.margin_minimum.setEnabled(percent)
+        self.margin_maximum.setEnabled(percent)
+
+    def _load_safe_margin(self) -> None:
+        try:
+            state = self.session.safe_margin()
+        except SourceEditError as exc:
+            self.margin_value.setText(str(exc))
+            self.margin_mode.setEnabled(False)
+            self.margin_value.setEnabled(False)
+            self.margin_minimum.setEnabled(False)
+            self.margin_maximum.setEnabled(False)
+            self.margin_apply.setEnabled(False)
+            return
+
+        self.margin_mode.setEnabled(True)
+        self.margin_value.setEnabled(True)
+        self.margin_apply.setEnabled(True)
+        self.margin_mode.blockSignals(True)
+        self.margin_mode.setCurrentText(state.mode)
+        self.margin_mode.blockSignals(False)
+        self.margin_value.setText(str(state.value))
+        self.margin_minimum.setText("" if state.minimum is None else str(state.minimum))
+        self.margin_maximum.setText("" if state.maximum is None else str(state.maximum))
+        self._margin_mode_changed(state.mode)
+
+    def _apply_safe_margin(self) -> None:
+        mode = self.margin_mode.currentText()
+        try:
+            updated = self.session.set_safe_margin(
+                mode=mode,  # type: ignore[arg-type]
+                value=self.margin_value.text(),
+                minimum=self.margin_minimum.text() if mode == "percent" else None,
+                maximum=self.margin_maximum.text() if mode == "percent" else None,
+            )
+        except SourceEditError as exc:
+            QMessageBox.warning(self, "Safe-margin edit failed", str(exc))
+            return
+        self._replace_source_and_render(updated)
+
+    def _set_clip_enabled(self, selected: bool) -> None:
+        self.clip_explicit.setEnabled(selected)
+        self.clip_apply.setEnabled(selected)
+        explicit = selected and self.clip_explicit.isChecked()
+        self.clip_target.setEnabled(explicit)
+        self.clip_enabled.setEnabled(explicit)
+        self.clip_inset.setEnabled(explicit)
+
+    def _clip_explicit_toggled(self, checked: bool) -> None:
+        del checked
+        self._set_clip_enabled(self._clip_element_id is not None)
+
+    def _load_clip_for_item(self, current: QTreeWidgetItem) -> None:
+        self._clip_element_id = None
+        if current.text(1) == "layer":
+            self.clip_explicit.blockSignals(True)
+            self.clip_explicit.setChecked(False)
+            self.clip_explicit.blockSignals(False)
+            self._set_clip_enabled(False)
+            return
+
+        element_id = current.text(2)
+        try:
+            state = self.session.clip(element_id)
+        except SourceEditError:
+            self.clip_explicit.blockSignals(True)
+            self.clip_explicit.setChecked(False)
+            self.clip_explicit.blockSignals(False)
+            self._set_clip_enabled(False)
+            return
+
+        self._clip_element_id = element_id
+        self.clip_explicit.blockSignals(True)
+        self.clip_explicit.setChecked(state.explicit)
+        self.clip_explicit.blockSignals(False)
+        self.clip_target.setCurrentText(state.target)
+        self.clip_enabled.setChecked(state.enabled)
+        self.clip_inset.setText(str(state.inset))
+        self._set_clip_enabled(True)
+
+    def _apply_clip(self) -> None:
+        element_id = self._clip_element_id
+        if element_id is None:
+            return
+        try:
+            updated = self.session.set_clip(
+                element_id,
+                explicit=self.clip_explicit.isChecked(),
+                target=self.clip_target.currentText(),
+                enabled=self.clip_enabled.isChecked(),
+                inset=self.clip_inset.text() or "0",
+            )
+        except SourceEditError as exc:
+            QMessageBox.warning(self, "Clip edit failed", str(exc))
+            return
+        self._replace_source_and_render(updated)
 
     def _set_placement_enabled(self, enabled: bool) -> None:
         self.placement_mode.setEnabled(enabled)
@@ -372,10 +516,13 @@ class MainWindow(QMainWindow):
         if current is None:
             self._placement_element_id = None
             self._set_placement_enabled(False)
+            self._clip_element_id = None
+            self._set_clip_enabled(False)
             self._seed_element_id = None
             self._set_seed_enabled(False, resolved=False)
             return
         self._load_placement_for_item(current)
+        self._load_clip_for_item(current)
         self._load_seed_for_item(current)
         if current.text(1) == "starfield":
             resolved = self.session.resolved_seed(current.text(2))
@@ -391,6 +538,7 @@ class MainWindow(QMainWindow):
     def _show_result(self, result: PreviewResult) -> None:
         if result.svg is not None:
             self.preview.load(QByteArray(result.svg.encode("utf-8")))
+        self._load_safe_margin()
         self._refresh_tree(result.tree)
 
         lines: list[str] = []
