@@ -1,59 +1,33 @@
-# PatchCreator Proposed Architecture
+# PatchCreator Architecture
 
 Status: Draft 0.1
 
 ## Package layout
 
+The implementation has grown beyond the original bootstrap sketch. The current
+high-level package split is:
+
 ```text
 patchcreator/
-  __init__.py
-  cli.py
-  config/
-    loader.py
-    schema.py
-  scene/
-    graph.py
-    node.py
-    placement.py
-    clipping.py
-    overlap.py
-  geometry/
-    units.py
-    primitives.py
-    transform.py
-    paths.py
-    boolean.py
-    simplify.py
-  components/
-    registry.py
-    boundary.py
-    border.py
-    stars.py
-    earth.py
-    trajectory.py
-    text.py
-    assets.py
-  profiles/
-    loader.py
-    defaults/
-  validation/
-    engine.py
-    feature_size.py
-    gaps.py
-    islands.py
-    strokes.py
-    overlaps.py
-    overlay.py
-  svg/
-    writer.py
-    inkscape.py
-    metadata.py
-    export.py
-  assets/
-    normalize.py
+  assets/       reusable-SVG inspection and normalisation
+  components/   built-in procedural/renderable components and registry
+  config/       YAML loader and Pydantic document schema
+  data/         explicit external-dataset catalogue/cache
+  geography/    geographic data adapters and projections
+  geometry/     affine transforms, bounds, paths and physical geometry
+  gui/          optional GUI-independent editor state plus PySide6 shell
+  profiles/     machine/design-intent profile loading and defaults
+  scene/        scene graph, placement and coordinate-frame resolution
+  svg/          editable writer and compatibility/export transforms
+  text/         font resolution, shaping, outlines and SVG path sampling
+  validation/   independent SVG geometry analysis and debug overlays
+  cli.py        normal command handlers
+  dispatch.py   lazy top-level CLI/optional-GUI dispatch
+  palette.py    semantic/derived colour handling
 ```
 
-This is a logical architecture, not a requirement to create every module immediately.
+Submodule names are allowed to evolve; the architectural boundaries are more
+important than preserving an exact file tree in this document.
 
 ## Core objects
 
