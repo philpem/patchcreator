@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 from patchcreator.assets.normalize import _flatten_safe_leaf_transforms
 from patchcreator.svg.knockout import KnockoutResult, apply_knockout
 from patchcreator.svg.text_outline import TextOutlineError, TextOutlineResult, outline_straight_text
+from patchcreator.svg.text_path_general import outline_general_text_paths
 from patchcreator.svg.text_path_outline import outline_arc_text
 
 SVG_NS = "http://www.w3.org/2000/svg"
@@ -316,6 +317,11 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
 
     if options.text_mode == "paths":
         try:
+            general_path_result = outline_general_text_paths(
+                root,
+                font_path=options.font_path,
+                search_directories=options.font_search_paths or None,
+            )
             arc_result = outline_arc_text(
                 root,
                 font_path=options.font_path,
@@ -327,17 +333,25 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
                 search_directories=options.font_search_paths or None,
             )
             text_result = TextOutlineResult(
-                converted_count=arc_result.converted_count + straight_result.converted_count,
-                warnings=arc_result.warnings + straight_result.warnings,
+                converted_count=(
+                    general_path_result.converted_count
+                    + arc_result.converted_count
+                    + straight_result.converted_count
+                ),
+                warnings=(
+                    general_path_result.warnings
+                    + arc_result.warnings
+                    + straight_result.warnings
+                ),
             )
         except TextOutlineError as exc:
             raise CompatibilityExportError(str(exc)) from exc
     else:
         text_result = TextOutlineResult(converted_count=0)
 
-    # Text outlining deliberately runs before construction removal so circular
-    # and later arbitrary text-on-path passes can consume PatchCreator's live
-    # baseline paths before those authoring-only guides are discarded.
+    # Text outlining deliberately runs before construction removal so both
+    # specialised PatchCreator arcs and ordinary textPath baselines can be
+    # consumed before authoring-only guides are discarded.
     removed_construction = _remove_construction_geometry(root) if options.remove_construction else 0
     flattened = _flatten_safe_leaf_transforms(root) if options.flatten_safe_transforms else 0
 
