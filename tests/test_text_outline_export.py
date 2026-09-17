@@ -118,16 +118,20 @@ layers:
     assert group.findall(f"{{{SVG_NS}}}path")
 
 
-def test_external_textpath_is_rejected_until_arbitrary_path_support_lands():
+def test_external_textpath_is_outlined_when_path_is_supported():
     svg = f"""<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80">
   <defs><path id="arc" d="M 10,20 A 20,20 0 0 1 50,20"/></defs>
   <text id="title" font-size="5"><textPath href="#arc">CURVED</textPath></text>
 </svg>"""
-    with pytest.raises(CompatibilityExportError, match="PatchCreator construction baselines"):
-        export_svg_text(
-            svg,
-            options=ExportOptions(text_mode="paths", font_path=_system_font()),
-        )
+    result = export_svg_text(
+        svg,
+        options=ExportOptions(text_mode="paths", font_path=_system_font()),
+    )
+    root = _root(result.svg)
+    assert result.outlined_text_count == 1
+    assert root.find(f".//{{{SVG_NS}}}text") is None
+    assert root.find(f".//{{{SVG_NS}}}textPath") is None
+    assert root.findall(f".//{{{SVG_NS}}}g[@id='title']/{{{SVG_NS}}}path")
 
 
 def test_tspan_and_unsupported_textlength_mode_fail_explicitly():
