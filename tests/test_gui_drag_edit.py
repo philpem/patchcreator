@@ -4,6 +4,7 @@ import math
 
 import pytest
 
+from patchcreator.gui import PreviewSession
 from patchcreator.gui.drag_edit import (
     canvas_size,
     drag_position,
@@ -167,3 +168,15 @@ def test_invalid_viewport_dimensions_are_rejected():
             canvas_width=80,
             canvas_height=80,
         )
+
+
+def test_preview_session_drag_updates_yaml_and_marks_dirty():
+    session = PreviewSession(_BASE)
+    assert session.canvas_size().centre == (40, 40)
+    updated = session.drag_to_canvas("marker", canvas_x=48, canvas_y=36)
+    state = placement_state(updated, "marker")
+    assert state.mode == "cartesian"
+    assert (float(state.first), float(state.second)) == pytest.approx((8, -4))
+    assert session.text == updated
+    assert session.dirty
+    assert session.render().valid
