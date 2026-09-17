@@ -29,6 +29,8 @@ _DEFAULT_DOCUMENT = """version: 0.1
 canvas:
   shape: circle
   diameter: 80
+profile:
+  intent: standard-patch
 layers:
   - id: artwork
     label: Artwork
@@ -54,8 +56,8 @@ class MainWindow(QMainWindow):
         self.preview.setMinimumSize(320, 320)
         self.diagnostics = QPlainTextEdit()
         self.diagnostics.setReadOnly(True)
-        self.diagnostics.setMaximumBlockCount(200)
-        self.diagnostics.setMaximumHeight(130)
+        self.diagnostics.setMaximumBlockCount(300)
+        self.diagnostics.setMaximumHeight(160)
 
         horizontal = QSplitter(Qt.Orientation.Horizontal)
         horizontal.addWidget(self.scene_tree)
@@ -113,10 +115,21 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
+        view_menu = self.menuBar().addMenu("&View")
+        self.validation_action = QAction("Show &validation overlay", self)
+        self.validation_action.setCheckable(True)
+        self.validation_action.setShortcut("Ctrl+Shift+V")
+        self.validation_action.toggled.connect(self._validation_toggled)
+        view_menu.addAction(self.validation_action)
+
         render_action = QAction("&Render now", self)
         render_action.setShortcut("Ctrl+R")
         render_action.triggered.connect(self._render_from_editor)
         self.menuBar().addAction(render_action)
+
+    def _validation_toggled(self, enabled: bool) -> None:
+        self.session.set_validation_enabled(enabled)
+        self._render_from_editor()
 
     def _source_changed(self) -> None:
         self.session.set_text(self.editor.toPlainText())
@@ -186,11 +199,29 @@ class MainWindow(QMainWindow):
         lines: list[str] = []
         if result.error:
             lines.append(result.error)
+        if result.validation_error:
+            lines.append(f"validation: {result.validation_error}")
         lines.extend(f"warning: {warning}" for warning in result.warnings)
+        report = result.validation_report
+        if report is not None:
+            profile = f"; profile {result.validation_profile}" if result.validation_profile else ""
+            lines.append(
+                f"validation: {report.error_count} error(s), {report.warning_count} warning(s), "
+                f"{report.info_count} info{profile}"
+            )
+            lines.extend(finding.format() for finding in report.findings)
         self.diagnostics.setPlainText("\n".join(lines))
 
         if result.error:
             self.statusBar().showMessage("Preview has errors; showing last valid render and scene tree")
+        elif result.validation_error:
+            self.statusBar().showMessage("Rendered successfully; validation view unavailable")
+        elif report is not None and (report.error_count or report.warning_count):
+            self.statusBar().showMessage(
+                f"Rendered with {report.error_count + report.warning_count} actionable validation finding(s)"
+            )
+        elif report is not None:
+            self.statusBar().showMessage("Rendered successfully; validation OK")
         elif result.warnings:
             self.statusBar().showMessage(f"Rendered with {len(result.warnings)} warning(s)")
         else:

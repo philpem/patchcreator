@@ -20,6 +20,22 @@ layers:
             label: Guide star
 """
 
+_VALIDATED = """version: 0.1
+canvas: {shape: circle, diameter: 80}
+profile:
+  intent: standard-patch
+palette:
+  gold: '#f0c040'
+layers:
+  - id: artwork
+    elements:
+      - id: border
+        type: border
+        inset: 2
+        stroke: {colour: gold, width: 0.2}
+        clip: {target: none}
+"""
+
 
 def test_preview_session_renders_through_normal_pipeline_and_builds_tree():
     session = PreviewSession(_VALID)
@@ -71,6 +87,57 @@ def test_invalid_edit_keeps_last_valid_preview_and_tree_visible():
     assert session.last_valid_svg == good.svg
     assert session.last_valid_tree == good.tree
     assert session.dirty
+
+
+def test_validation_overlay_uses_resolved_design_profile_and_is_ephemeral():
+    session = PreviewSession(_VALIDATED)
+    plain = session.render()
+    assert plain.valid
+    assert plain.svg is not None
+    assert "patchcreator-validation" not in plain.svg
+
+    session.set_validation_enabled(True)
+    validated = session.render()
+
+    assert validated.valid
+    assert validated.validation_error is None
+    assert validated.validation_profile == "standard-patch"
+    assert validated.validation_report is not None
+    assert validated.validation_report.warning_count + validated.validation_report.error_count >= 1
+    assert "patchcreator-validation" in validated.svg
+    assert session.last_valid_svg is not None
+    assert "patchcreator-validation" not in session.last_valid_svg
+    assert session.last_display_svg == validated.svg
+
+
+def test_invalid_yaml_preserves_last_validation_overlay_without_revalidating():
+    session = PreviewSession(_VALIDATED)
+    session.set_validation_enabled(True)
+    good = session.render()
+    assert good.svg is not None
+    assert "patchcreator-validation" in good.svg
+
+    session.set_text("version: [broken")
+    broken = session.render()
+
+    assert not broken.valid
+    assert broken.svg == good.svg
+    assert broken.validation_report is None
+    assert session.last_valid_svg is not None
+    assert "patchcreator-validation" not in session.last_valid_svg
+
+
+def test_validation_without_threshold_profile_keeps_base_preview_and_reports_problem():
+    session = PreviewSession(_VALID)
+    session.set_validation_enabled(True)
+    result = session.render()
+
+    assert result.valid
+    assert result.svg is not None
+    assert result.validation_report is None
+    assert result.validation_error is not None
+    assert "does not define any validation thresholds" in result.validation_error
+    assert "patchcreator-validation" not in result.svg
 
 
 def test_session_load_save_and_source_directory(tmp_path: Path):
