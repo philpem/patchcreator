@@ -8,11 +8,20 @@ _VALID = """version: 0.1
 canvas: {shape: circle, diameter: 80}
 layers:
   - id: artwork
-    elements: []
+    label: Artwork
+    elements:
+      - id: formation
+        type: group
+        label: Formation
+        visible: false
+        elements:
+          - id: marker
+            type: star
+            label: Guide star
 """
 
 
-def test_preview_session_renders_through_normal_pipeline():
+def test_preview_session_renders_through_normal_pipeline_and_builds_tree():
     session = PreviewSession(_VALID)
     result = session.render()
 
@@ -22,11 +31,35 @@ def test_preview_session_renders_through_normal_pipeline():
     assert '<svg' in result.svg
     assert session.last_valid_svg == result.svg
 
+    assert len(result.tree) == 1
+    layer = result.tree[0]
+    assert (layer.id, layer.label, layer.kind, layer.visible) == (
+        "artwork",
+        "Artwork",
+        "layer",
+        True,
+    )
+    group = layer.children[0]
+    assert (group.id, group.label, group.kind, group.visible) == (
+        "formation",
+        "Formation",
+        "group",
+        False,
+    )
+    marker = group.children[0]
+    assert (marker.id, marker.label, marker.kind, marker.visible) == (
+        "marker",
+        "Guide star",
+        "star",
+        True,
+    )
 
-def test_invalid_edit_keeps_last_valid_preview_visible():
+
+def test_invalid_edit_keeps_last_valid_preview_and_tree_visible():
     session = PreviewSession(_VALID)
     good = session.render()
     assert good.svg is not None
+    assert good.tree
 
     session.set_text("version: [not valid")
     broken = session.render()
@@ -34,7 +67,9 @@ def test_invalid_edit_keeps_last_valid_preview_visible():
     assert not broken.valid
     assert broken.error
     assert broken.svg == good.svg
+    assert broken.tree == good.tree
     assert session.last_valid_svg == good.svg
+    assert session.last_valid_tree == good.tree
     assert session.dirty
 
 

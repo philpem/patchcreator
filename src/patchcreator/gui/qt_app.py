@@ -15,12 +15,14 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QSplitter,
     QStatusBar,
+    QTreeWidget,
+    QTreeWidgetItem,
     QWidget,
     QVBoxLayout,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 
-from .session import PreviewResult, PreviewSession
+from .session import PreviewResult, PreviewSession, SceneTreeItem
 
 
 _DEFAULT_DOCUMENT = """version: 0.1
@@ -38,7 +40,13 @@ class MainWindow(QMainWindow):
     def __init__(self, source_path: Path | None = None) -> None:
         super().__init__()
         self.session = PreviewSession(_DEFAULT_DOCUMENT)
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(1050, 600)
+
+        self.scene_tree = QTreeWidget()
+        self.scene_tree.setHeaderLabels(["Name", "Type", "ID", "Visible"])
+        self.scene_tree.setMinimumWidth(230)
+        self.scene_tree.setAlternatingRowColors(True)
+        self.scene_tree.currentItemChanged.connect(self._tree_selection_changed)
 
         self.editor = QPlainTextEdit()
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
@@ -50,10 +58,12 @@ class MainWindow(QMainWindow):
         self.diagnostics.setMaximumHeight(130)
 
         horizontal = QSplitter(Qt.Orientation.Horizontal)
+        horizontal.addWidget(self.scene_tree)
         horizontal.addWidget(self.editor)
         horizontal.addWidget(self.preview)
-        horizontal.setStretchFactor(0, 1)
+        horizontal.setStretchFactor(0, 0)
         horizontal.setStretchFactor(1, 1)
+        horizontal.setStretchFactor(2, 1)
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -117,9 +127,61 @@ class MainWindow(QMainWindow):
         self.session.set_text(self.editor.toPlainText())
         self._show_result(self.session.render())
 
+    def _tree_item(self, node: SceneTreeItem) -> QTreeWidgetItem:
+        item = QTreeWidgetItem(
+            [node.label, node.kind, node.id, "yes" if node.visible else "no"]
+        )
+        for child in node.children:
+            item.addChild(self._tree_item(child))
+        return item
+
+    def _refresh_tree(self, nodes: tuple[SceneTreeItem, ...]) -> None:
+        selected_id = None
+        current = self.scene_tree.currentItem()
+        if current is not None:
+            selected_id = current.text(2)
+
+        self.scene_tree.blockSignals(True)
+        self.scene_tree.clear()
+        selected_item: QTreeWidgetItem | None = None
+        for node in nodes:
+            item = self._tree_item(node)
+            self.scene_tree.addTopLevelItem(item)
+            if selected_id:
+                selected_item = selected_item or self._find_tree_item(item, selected_id)
+        self.scene_tree.expandAll()
+        if selected_item is not None:
+            self.scene_tree.setCurrentItem(selected_item)
+        for column in range(4):
+            self.scene_tree.resizeColumnToContents(column)
+        self.scene_tree.blockSignals(False)
+
+    def _find_tree_item(self, item: QTreeWidgetItem, node_id: str) -> QTreeWidgetItem | None:
+        if item.text(2) == node_id:
+            return item
+        for index in range(item.childCount()):
+            found = self._find_tree_item(item.child(index), node_id)
+            if found is not None:
+                return found
+        return None
+
+    def _tree_selection_changed(
+        self,
+        current: QTreeWidgetItem | None,
+        previous: QTreeWidgetItem | None,
+    ) -> None:
+        del previous
+        if current is None:
+            return
+        self.statusBar().showMessage(
+            f"Selected {current.text(1)} {current.text(2)} — "
+            f"visible: {current.text(3)}"
+        )
+
     def _show_result(self, result: PreviewResult) -> None:
         if result.svg is not None:
             self.preview.load(QByteArray(result.svg.encode("utf-8")))
+        self._refresh_tree(result.tree)
 
         lines: list[str] = []
         if result.error:
@@ -128,7 +190,7 @@ class MainWindow(QMainWindow):
         self.diagnostics.setPlainText("\n".join(lines))
 
         if result.error:
-            self.statusBar().showMessage("Preview has errors; showing last valid render")
+            self.statusBar().showMessage("Preview has errors; showing last valid render and scene tree")
         elif result.warnings:
             self.statusBar().showMessage(f"Rendered with {len(result.warnings)} warning(s)")
         else:
