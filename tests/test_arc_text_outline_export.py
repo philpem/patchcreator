@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from patchcreator.config.loader import loads_design
-from patchcreator.svg.export import CompatibilityExportError, ExportOptions, export_svg_text
+from patchcreator.svg.export import ExportOptions, export_svg_text
 from patchcreator.svg.writer import render_design
 
 SVG_NS = "http://www.w3.org/2000/svg"
@@ -100,8 +100,6 @@ layers:
         paths = group.findall(f"{{{SVG_NS}}}path")
         assert len(paths) >= 3
         matrices = [_matrix(path) for path in paths]
-        # Curved placement must rotate glyph axes along the changing tangent;
-        # at least one glyph therefore has non-zero off-diagonal terms.
         assert any(abs(values[1]) > 1e-5 and abs(values[2]) > 1e-5 for values in matrices)
 
 
@@ -135,26 +133,25 @@ layers:
     paths = root.findall(f".//{{{SVG_NS}}}g[@id='title-text']/{{{SVG_NS}}}path")
     assert paths
     origins = [(_matrix(path)[4], _matrix(path)[5]) for path in paths]
-    # Every glyph origin should stay close to the requested radius, allowing
-    # for no more than the baseline-shift/y-offset scale used by this example.
     radii = [(x * x + y * y) ** 0.5 for x, y in origins]
     assert all(28.5 <= radius <= 31.5 for radius in radii)
 
 
-def test_non_patchcreator_or_non_circular_textpath_fails_explicitly():
+def test_non_patchcreator_and_elliptical_textpaths_are_supported():
     ordinary = f"""<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80">
   <defs><path id="arc" d="M 10,20 A 20,20 0 0 1 50,20"/></defs>
   <text id="title" font-family="DejaVu Sans" font-size="5">
     <textPath href="#arc">CURVED</textPath>
   </text>
 </svg>"""
-    with pytest.raises(CompatibilityExportError, match="PatchCreator construction baselines"):
-        export_svg_text(
-            ordinary,
-            options=ExportOptions(text_mode="paths", font_path=_system_font()),
-        )
+    result = export_svg_text(
+        ordinary,
+        options=ExportOptions(text_mode="paths", font_path=_system_font()),
+    )
+    assert result.outlined_text_count == 1
+    assert _root(result.svg).find(f".//{{{SVG_NS}}}text") is None
 
-    non_circular = f"""<svg xmlns="{SVG_NS}" xmlns:patchcreator="{PATCHCREATOR_NS}"
+    elliptical = f"""<svg xmlns="{SVG_NS}" xmlns:patchcreator="{PATCHCREATOR_NS}"
       width="80mm" height="80mm" viewBox="0 0 80 80">
   <path id="baseline" d="M 10,20 A 20,15 0 0 1 50,20"
         patchcreator:construction-role="text-baseline"/>
@@ -162,8 +159,9 @@ def test_non_patchcreator_or_non_circular_textpath_fails_explicitly():
     <textPath href="#baseline">CURVED</textPath>
   </text>
 </svg>"""
-    with pytest.raises(CompatibilityExportError, match="circular arc"):
-        export_svg_text(
-            non_circular,
-            options=ExportOptions(text_mode="paths", font_path=_system_font()),
-        )
+    result = export_svg_text(
+        elliptical,
+        options=ExportOptions(text_mode="paths", font_path=_system_font()),
+    )
+    assert result.outlined_text_count == 1
+    assert _root(result.svg).find(f".//{{{SVG_NS}}}text") is None
