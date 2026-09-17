@@ -24,9 +24,13 @@ dependencies = [
 dev = [
   "pytest>=8,<10",
 ]
+gui = [
+  "PySide6>=6.8,<7",
+]
 
 [project.scripts]
 patchcreator = "patchcreator.cli:main"
+patchcreator-gui = "patchcreator.gui.app:main"
 
 [project.entry-points."patchcreator.components"]
 # Third-party packages may register component factories/renderers here.
