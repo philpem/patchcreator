@@ -17,6 +17,8 @@ from patchcreator.profiles import ProfileError, resolve_profile
 from patchcreator.svg.writer import render_design
 from patchcreator.validation import ValidationReport, check_svg_text, debug_svg_text
 
+from .source_edit import PlacementMode, PlacementState, placement_state, set_element_position
+
 
 @dataclass(frozen=True)
 class SceneTreeItem:
@@ -93,6 +95,31 @@ class PreviewSession:
 
     def set_validation_enabled(self, enabled: bool) -> None:
         self.validation_enabled = bool(enabled)
+
+    def placement(self, element_id: str) -> PlacementState:
+        """Read one element's editable position from the current YAML text."""
+
+        return placement_state(self.text, element_id)
+
+    def set_placement(
+        self,
+        element_id: str,
+        *,
+        mode: PlacementMode,
+        first: str,
+        second: str,
+    ) -> str:
+        """Mutate one element's position in YAML and mark the session dirty."""
+
+        updated = set_element_position(
+            self.text,
+            element_id,
+            mode=mode,
+            first=first,
+            second=second,
+        )
+        self.set_text(updated)
+        return updated
 
     def _validate_preview(
         self,
