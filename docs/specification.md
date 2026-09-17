@@ -23,7 +23,7 @@ PatchCreator shall:
 - support compositing, clipping and occlusion without requiring a general 3D scene engine;
 - support validation and visual debug overlays for geometry likely to embroider poorly;
 - be extensible with third-party procedural components without modifying the core package;
-- provide foundations for a future GUI editor with live preview.
+- provide an optional GUI editor with live preview on the same declarative model.
 
 ## 2. Non-goals
 
@@ -512,21 +512,30 @@ patchcreator data fetch natural-earth-land-110m
 
 The CLI must be a thin layer over the Python library. External-data commands are explicit user actions; render/check operations shall not trigger downloads implicitly.
 
-## 23. Future GUI
+## 23. GUI editor
 
-A future GUI editor should use the same declarative model and scene graph rather than introducing a second internal representation.
+The optional GUI uses the same declarative YAML model, scene graph, renderer and
+validator rather than introducing a second internal representation.
 
-Likely functionality includes:
+The initial GUI implementation includes:
 
-- live SVG preview;
+- live SVG preview with last-valid-preview behaviour during invalid edits;
 - layer/object hierarchy;
-- drag placement;
-- Cartesian and polar coordinate controls;
-- anchor/path placement controls;
+- drag placement for default/Cartesian/polar objects in the default patch frame;
+- structured Cartesian and polar coordinate controls;
 - safe-margin and clipping controls;
-- starfield regenerate/seed lock;
-- validation overlay and issue list;
-- palette and semantic role editing.
+- starfield regenerate/seed-lock controls;
+- live validation overlay and issue list;
+- Open/Save/Save As over the human-authored YAML source.
+
+Structured GUI edits round-trip the YAML and then re-enter the normal
+parse/render pipeline. The GUI does not maintain a hidden authoritative scene
+copy.
+
+Future enhancements may include anchor/path-placement property editors,
+click-through navigation between validation findings and objects, richer palette
+and semantic-role editing, and direct manipulation for non-default coordinate
+frames.
 
 ## 24. Initial end-to-end demonstrator
 
