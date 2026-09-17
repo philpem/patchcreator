@@ -131,6 +131,94 @@ def _add_clip_paths(defs: ET.Element, geometry: CanvasGeometry) -> None:
     _add_shape_clip(defs, "clip-safe-area", geometry, inset=geometry.safe_margin)
 
 
+def _construction_attrs(role: str) -> dict[str, str]:
+    return {q(PATCHCREATOR_NS, "construction-role"): role}
+
+
+def _add_construction_guides(
+    root: ET.Element,
+    design: DesignSpec,
+    geometry: CanvasGeometry,
+) -> ET.Element:
+    """Append the authoring-only patch construction layer.
+
+    The layer is intentionally ordinary editable SVG. It is outside the scene
+    graph, carries construction metadata understood by compatibility export and
+    validation, and therefore cannot influence placement or artwork bounds.
+    """
+
+    attrs = {
+        "id": "patchcreator-construction",
+        **_construction_attrs("layer"),
+        "fill": "none",
+        "stroke": "#00a6ff",
+        "stroke-width": "0.2",
+        "stroke-opacity": "0.75",
+        "vector-effect": "non-scaling-stroke",
+    }
+    if design.settings.inkscape_metadata:
+        attrs[q(INKSCAPE_NS, "groupmode")] = "layer"
+        attrs[q(INKSCAPE_NS, "label")] = "PatchCreator Construction"
+    layer = ET.SubElement(root, q(SVG_NS, "g"), attrs)
+
+    patch = _shape_element(
+        layer,
+        geometry,
+        id="construction-patch-boundary",
+        **_construction_attrs("patch-boundary"),
+    )
+    patch.set("stroke-dasharray", "2 1")
+
+    safe = _shape_element(
+        layer,
+        geometry,
+        inset=geometry.safe_margin,
+        id="construction-safe-area",
+        **_construction_attrs("safe-area"),
+    )
+    safe.set("stroke-dasharray", "1 1")
+
+    cx, cy = geometry.centre
+    ET.SubElement(
+        layer,
+        q(SVG_NS, "line"),
+        {
+            "id": "construction-horizontal-axis",
+            "x1": "0",
+            "y1": _fmt(cy),
+            "x2": _fmt(geometry.width),
+            "y2": _fmt(cy),
+            "stroke-dasharray": "1 1",
+            **_construction_attrs("horizontal-axis"),
+        },
+    )
+    ET.SubElement(
+        layer,
+        q(SVG_NS, "line"),
+        {
+            "id": "construction-vertical-axis",
+            "x1": _fmt(cx),
+            "y1": "0",
+            "x2": _fmt(cx),
+            "y2": _fmt(geometry.height),
+            "stroke-dasharray": "1 1",
+            **_construction_attrs("vertical-axis"),
+        },
+    )
+    ET.SubElement(
+        layer,
+        q(SVG_NS, "circle"),
+        {
+            "id": "construction-centre",
+            "cx": _fmt(cx),
+            "cy": _fmt(cy),
+            "r": "0.8",
+            **_construction_attrs("centre"),
+        },
+    )
+    return layer
+
+
 def _effective_clip(element: ElementSpec, design: DesignSpec) -> tuple[str, bool, float]:
     clip = element.clip
     if clip is None:
@@ -590,6 +678,8 @@ def render_design(
     _run_finalizers(graph, finalizers, skipped, warnings)
     _apply_scene_transforms(graph, svg_groups)
     _apply_clips(design, geometry, defs, graph, svg_groups)
+    if design.settings.construction_guides:
+        _add_construction_guides(root, design, geometry)
 
     ET.indent(root, space="  ")
     xml = ET.tostring(root, encoding="unicode", xml_declaration=False)
