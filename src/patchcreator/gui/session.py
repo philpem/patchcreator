@@ -1,15 +1,11 @@
-"""GUI-independent editable YAML preview state.
-
-The GUI intentionally owns only source text and file state. Parsing, scene
-construction, SVG generation and embroidery validation are delegated to the
-normal PatchCreator library pipeline so there is no second GUI document model
-to keep in sync.
-"""
+"""GUI-independent editable YAML preview state."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import secrets
+import xml.etree.ElementTree as ET
 
 from patchcreator.config.loader import DesignLoadError, loads_design
 from patchcreator.config.schema import DesignSpec, ElementSpec, LayerSpec
@@ -17,7 +13,17 @@ from patchcreator.profiles import ProfileError, resolve_profile
 from patchcreator.svg.writer import render_design
 from patchcreator.validation import ValidationReport, check_svg_text, debug_svg_text
 
-from .source_edit import PlacementMode, PlacementState, placement_state, set_element_position
+from .source_edit import (
+    PlacementMode,
+    PlacementState,
+    StarfieldSeedState,
+    placement_state,
+    set_element_position,
+    set_starfield_seed,
+    starfield_seed_state,
+)
+
+PATCHCREATOR_NS = "https://philpem.github.io/patchcreator/ns"
 
 
 @dataclass(frozen=True)
@@ -50,9 +56,30 @@ def _layer_tree(layer: LayerSpec) -> SceneTreeItem:
 
 
 def scene_tree(design: DesignSpec) -> tuple[SceneTreeItem, ...]:
-    """Return an immutable hierarchy derived directly from ``DesignSpec``."""
-
     return tuple(_layer_tree(layer) for layer in design.layers)
+
+
+def resolved_starfield_seed(svg: str | None, element_id: str) -> int | None:
+    """Read the renderer-resolved seed from PatchCreator SVG metadata."""
+
+    if not svg:
+        return None
+    try:
+        root = ET.fromstring(svg)
+    except ET.ParseError:
+        return None
+    for element in root.iter():
+        if element.get("id") != element_id:
+            continue
+        raw = element.get(f"{{{PATCHCREATOR_NS}}}seed")
+        if raw is None:
+            return None
+        try:
+            value = int(raw)
+        except ValueError:
+            return None
+        return value if 0 <= value < 1 << 64 else None
+    return None
 
 
 @dataclass(frozen=True)
@@ -71,8 +98,6 @@ class PreviewResult:
 
 
 class PreviewSession:
-    """Editable design source plus the last successfully rendered preview."""
-
     def __init__(self, text: str = "", *, source_path: str | Path | None = None) -> None:
         self.text = text
         self.source_path = Path(source_path) if source_path is not None else None
@@ -97,8 +122,6 @@ class PreviewSession:
         self.validation_enabled = bool(enabled)
 
     def placement(self, element_id: str) -> PlacementState:
-        """Read one element's editable position from the current YAML text."""
-
         return placement_state(self.text, element_id)
 
     def set_placement(
@@ -109,8 +132,6 @@ class PreviewSession:
         first: str,
         second: str,
     ) -> str:
-        """Mutate one element's position in YAML and mark the session dirty."""
-
         updated = set_element_position(
             self.text,
             element_id,
@@ -121,16 +142,36 @@ class PreviewSession:
         self.set_text(updated)
         return updated
 
+    def starfield_seed(self, element_id: str) -> StarfieldSeedState:
+        return starfield_seed_state(self.text, element_id)
+
+    def resolved_seed(self, element_id: str) -> int | None:
+        return resolved_starfield_seed(self.last_valid_svg, element_id)
+
+    def set_seed(self, element_id: str, seed: int | str) -> str:
+        updated = set_starfield_seed(self.text, element_id, seed)
+        self.set_text(updated)
+        return updated
+
+    def lock_current_seed(self, element_id: str) -> str:
+        seed = self.resolved_seed(element_id)
+        if seed is None:
+            raise ValueError(f"starfield {element_id!r} has no resolved seed in the current render")
+        return self.set_seed(element_id, seed)
+
+    def regenerate_seed(self, element_id: str) -> str:
+        return self.set_seed(element_id, secrets.randbits(64))
+
+    def auto_seed(self, element_id: str) -> str:
+        return self.set_seed(element_id, "auto")
+
     def _validate_preview(
         self,
         design: DesignSpec,
         svg: str,
     ) -> tuple[str, ValidationReport | None, str | None, str | None]:
-        """Return display SVG plus validation metadata for one successful render."""
-
         if not self.validation_enabled:
             return svg, None, None, None
-
         try:
             effective = resolve_profile(design.profile)
             constraints = effective.constraints
@@ -147,7 +188,6 @@ class PreviewSession:
                 )
             ):
                 raise ProfileError("effective profile does not define any validation thresholds")
-
             report = check_svg_text(
                 svg,
                 minimum_stroke_width_mm=constraints.minimum_stroke_width,
@@ -158,8 +198,6 @@ class PreviewSession:
             )
             return debug_svg_text(svg, report), report, None, profile_name
         except (ProfileError, ValueError) as exc:
-            # Validation is an optional view over an otherwise valid render. A
-            # validation failure must not discard the usable base SVG.
             return svg, None, str(exc), None
 
     def render(self) -> PreviewResult:
@@ -179,16 +217,12 @@ class PreviewSession:
                 tree=self.last_valid_tree,
             )
 
-        # Keep the unmodified master render as the last-valid SVG. Validation
-        # overlays are ephemeral display copies and are never saved back.
         self.last_valid_svg = rendered.svg
         self.last_valid_tree = tree
         self.last_warnings = rendered.warnings
         self.last_error = None
-
         display_svg, report, validation_error, profile_name = self._validate_preview(
-            design,
-            rendered.svg,
+            design, rendered.svg
         )
         self.last_display_svg = display_svg
         return PreviewResult(
