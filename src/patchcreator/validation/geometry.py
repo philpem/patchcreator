@@ -24,6 +24,7 @@ from patchcreator.geometry import AffineTransform
 from .svg import (
     SvgInspectionError,
     _NON_RENDERED_CONTAINERS,
+    _is_construction,
     _local_name,
     _parse_opacity,
     _parse_root_length_mm,
@@ -478,7 +479,11 @@ def iter_visible_fills(root: ET.Element) -> Iterator[FilledGeometry]:
         display = _property(element, style, "display", None)
         hidden = ancestor_hidden or (display is not None and display.strip().lower() == "none")
         visibility = (_property(element, style, "visibility", inherited_visibility) or "visible").strip().lower()
-        now_non_rendered = non_rendered or tag in _NON_RENDERED_CONTAINERS
+        now_non_rendered = (
+            non_rendered
+            or tag in _NON_RENDERED_CONTAINERS
+            or _is_construction(element)
+        )
         local_transform = transform @ _parse_transform(element.get("transform"))
 
         fill = (_property(element, style, "fill", inherited_fill) or "black").strip()
