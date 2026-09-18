@@ -262,6 +262,7 @@ def _hide_anchor_markers(root: ET.Element) -> None:
             if style and not style.rstrip().endswith(";"):
                 style += ";"
             element.set("style", style + "display:none")
+            element.set(_q(PATCHCREATOR_NS, "construction-role"), "asset-anchor-source")
 
 
 def _append_anchor_guides(
