@@ -104,6 +104,7 @@ def test_asset_is_builtin_and_relative_path_resolves_from_design(tmp_path: Path)
     assert body.attrib["fill"] != design.palette["primary"]
     assert body.attrib["clip-path"] == "url(#asset-mascot-clip)"
     assert "display:none" in anchor.attrib["style"]
+    assert anchor.attrib[f"{{{PATCHCREATOR_NS}}}construction-role"] == "asset-anchor-source"
 
 
 def test_asset_anchor_guides_use_resolved_local_anchor_positions(tmp_path: Path):
