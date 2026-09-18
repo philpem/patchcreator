@@ -1,6 +1,6 @@
 # PatchCreator Design Specification
 
-Status: Draft 0.1
+Status: Version 0.1
 
 PatchCreator is a Python library and command-line tool for constructing layered, editable, mission-patch-style SVG artwork from procedural elements and reusable SVG assets. The generated master artwork is intended to be refined in Inkscape and then exported for embroidery workflows such as Brother PE-DESIGN or Ink/Stitch/PES.
 

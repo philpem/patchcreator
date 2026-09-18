@@ -1,6 +1,6 @@
 # PatchCreator Architecture
 
-Status: Draft 0.1
+Status: Version 0.1
 
 ## Package layout
 
