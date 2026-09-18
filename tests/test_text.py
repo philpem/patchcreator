@@ -53,6 +53,7 @@ layers:
     assert group.attrib[f"{{{PATCHCREATOR_NS}}}text-conversion"] == "live"
     assert group.attrib[f"{{{PATCHCREATOR_NS}}}text-layout"] == "bottom-arc"
     assert baseline.attrib[f"{{{PATCHCREATOR_NS}}}construction-role"] == "text-baseline"
+    assert baseline.attrib["stroke"] == "none"
     assert " A 34,34 0 0 0 " in baseline.attrib["d"]
     assert text.attrib["font-family"] == "DejaVu Sans"
     assert text.attrib["font-weight"] == "700"
@@ -62,6 +63,34 @@ layers:
     assert text_path.attrib["lengthAdjust"] == "spacing"
     assert float(text_path.attrib["textLength"]) == pytest.approx(34 * (3.141592653589793 / 2) * 0.9, abs=1e-5)
     assert text_path.text == "SHARED ORBIT"
+
+
+def test_construction_guides_make_curved_text_baseline_visible():
+    design = loads_design(
+        """
+version: 0.1
+canvas: {shape: circle, diameter: 80}
+settings:
+  construction_guides: true
+layers:
+  - id: text
+    elements:
+      - id: title
+        type: text
+        text: GUIDE ME
+        layout: {type: top-arc, radius: 30}
+        font: {size: 5, tracking: normal}
+        clip: {target: none}
+"""
+    )
+    root = ET.fromstring(render_design(design).svg)
+    baseline = _find(root, "path", "title-baseline")
+    assert baseline is not None
+    assert baseline.attrib["stroke"] == "#00a6ff"
+    assert baseline.attrib["stroke-width"] == "0.2"
+    assert baseline.attrib["stroke-dasharray"] == "1 1"
+    assert baseline.attrib["vector-effect"] == "non-scaling-stroke"
+    assert baseline.attrib[f"{{{PATCHCREATOR_NS}}}construction-role"] == "text-baseline"
 
 
 def test_top_arc_defaults_to_clockwise_sweep():
@@ -205,5 +234,5 @@ layers:
         convert_to_path: true
 """
     )
-    with pytest.raises(ValueError, match="future export operation"):
+    with pytest.raises(ValueError, match="patchcreator export --text paths"):
         render_design(outlined)

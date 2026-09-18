@@ -200,6 +200,26 @@ def _text_width_estimate(text: str, size: float, tracking: Any) -> float:
     return max(size, base)
 
 
+def _baseline_construction_attrs(context: Any) -> dict[str, str]:
+    attrs = {
+        "fill": "none",
+        _q(PATCHCREATOR_NS, "construction-role"): "text-baseline",
+    }
+    if context.design.settings.construction_guides:
+        attrs.update(
+            {
+                "stroke": "#00a6ff",
+                "stroke-width": "0.2",
+                "stroke-opacity": "0.75",
+                "stroke-dasharray": "1 1",
+                "vector-effect": "non-scaling-stroke",
+            }
+        )
+    else:
+        attrs["stroke"] = "none"
+    return attrs
+
+
 def _validate_future_conversion_hooks(config: Mapping[str, Any], group: ET.Element) -> None:
     warp = config.get("warp")
     warp_is_disabled = (
@@ -214,8 +234,8 @@ def _validate_future_conversion_hooks(config: Mapping[str, Any], group: ET.Eleme
         )
     if bool(config.get("convert_to_path", False)):
         raise ValueError(
-            "text convert_to_path is a future export operation; generate live text and "
-            "convert it in Inkscape for now"
+            "text convert_to_path is not a render-time operation; keep live text in the master "
+            "and use 'patchcreator export --text paths' for compatibility output"
         )
     group.set(_q(PATCHCREATOR_NS, "text-conversion"), "live")
     group.set(_q(PATCHCREATOR_NS, "warp-hook"), "future-text-to-path")
@@ -269,9 +289,7 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             {
                 "id": baseline_id,
                 "d": d,
-                "fill": "none",
-                "stroke": "none",
-                _q(PATCHCREATOR_NS, "construction-role"): "text-baseline",
+                **_baseline_construction_attrs(context),
             },
         )
         text_node = ET.SubElement(
