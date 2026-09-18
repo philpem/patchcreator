@@ -30,6 +30,14 @@ _GEOMETRY_TAGS = {
     "use",
 }
 _NON_RENDERED_CONTAINERS = {"defs", "clipPath", "mask", "marker", "metadata", "title", "desc", "symbol"}
+PATCHCREATOR_NS = "https://philpem.github.io/patchcreator/ns"
+
+
+def _is_construction(element: ET.Element) -> bool:
+    return (
+        element.get(f"{{{PATCHCREATOR_NS}}}construction-role") is not None
+        or element.get("data-patchcreator-construction-role") is not None
+    )
 
 
 class SvgInspectionError(ValueError):
@@ -191,7 +199,11 @@ def iter_visible_strokes(root: ET.Element) -> Iterator[StrokeGeometry]:
         display = _property(element, style, "display", None)
         hidden = ancestor_hidden or (display is not None and display.strip().lower() == "none")
         visibility = (_property(element, style, "visibility", inherited_visibility) or "visible").strip().lower()
-        now_non_rendered = non_rendered or tag in _NON_RENDERED_CONTAINERS
+        now_non_rendered = (
+            non_rendered
+            or tag in _NON_RENDERED_CONTAINERS
+            or _is_construction(element)
+        )
         local_transform = transform @ _parse_transform(element.get("transform"))
 
         stroke = _property(element, style, "stroke", inherited_stroke)

@@ -454,18 +454,26 @@ Inkscape-specific metadata shall have a global off-switch for users who require 
 
 ## 19. Construction guides
 
-Optional construction guides should include, as relevant:
+When `settings.construction_guides` is enabled, PatchCreator emits a dedicated
+top Inkscape layer labelled **PatchCreator Construction**. The generic guide
+layer currently includes:
 
-- patch centre;
+- patch centre marker;
 - horizontal/vertical axes;
 - safe-area boundary;
-- patch radius/boundary;
+- patch boundary/radius.
+
+Construction geometry is ordinary editable SVG tagged with
+`patchcreator:construction-role`. It is authoring-only: it does not enter the
+scene graph or artwork bounds, the validator ignores it, and the default
+compatibility export removes it.
+
+Component-specific guides may be added as relevant, including:
+
 - orbit construction ellipse/path;
 - asset anchors;
 - text baselines;
 - object/reference origins.
-
-These should live in a dedicated labelled layer that can be hidden or removed.
 
 ## 20. SVG outputs
 
