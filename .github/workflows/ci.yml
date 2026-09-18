@@ -85,6 +85,12 @@ jobs:
         run: python -m build
       - name: Validate distribution metadata
         run: python -m twine check dist/*
+      - name: Verify source release materials
+        run: |
+          sdist_contents=$(tar -tzf dist/*.tar.gz)
+          grep -Eq '^[^/]+/CHANGELOG\.md$' <<<"$sdist_contents"
+          grep -Eq '^[^/]+/docs/specification\.md$' <<<"$sdist_contents"
+          grep -Eq '^[^/]+/examples/minimal-patch\.yaml$' <<<"$sdist_contents"
       - name: Install wheel in a clean environment
         run: |
           python -m venv /tmp/patchcreator-wheel-smoke

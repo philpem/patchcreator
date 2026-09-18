@@ -18,7 +18,8 @@ general vector editor or stitch-plan generator.
 
 ## Current status
 
-The initial implementation roadmap is complete. The repository now includes:
+Version 0.1 is the first complete implementation of the initial roadmap. It
+includes:
 
 - the versioned YAML model/loader, layered scene graph and physical-mm geometry;
 - Cartesian, polar, anchor-relative and path-following placement;
@@ -42,6 +43,7 @@ See:
 - [`docs/external-data.md`](docs/external-data.md) — third-party dataset acquisition/cache policy;
 - [`docs/gui.md`](docs/gui.md) — optional GUI installation and editing workflow;
 - [`examples/README.md`](examples/README.md) — runnable example catalogue;
+- [`CHANGELOG.md`](CHANGELOG.md) — release notes and version history;
 - [`docs/initial-issues.md`](docs/initial-issues.md) — historical bootstrap backlog.
 
 ## Development install
