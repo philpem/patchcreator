@@ -264,6 +264,66 @@ def _hide_anchor_markers(root: ET.Element) -> None:
             element.set("style", style + "display:none")
 
 
+def _append_anchor_guides(
+    element: Any,
+    context: Any,
+    anchors: Mapping[str, tuple[float, float]],
+) -> None:
+    """Render semantic asset anchors as authoring-only construction markers."""
+
+    if not context.design.settings.construction_guides or not anchors:
+        return
+
+    guide_group = ET.SubElement(
+        context.target_group,
+        _q(SVG_NS, "g"),
+        {
+            "id": f"{element.id}-anchor-guides",
+            _q(PATCHCREATOR_NS, "construction-role"): "asset-anchors",
+            "fill": "none",
+            "stroke": "#00a6ff",
+            "stroke-width": "0.2",
+            "stroke-opacity": "0.75",
+            "vector-effect": "non-scaling-stroke",
+        },
+    )
+    for index, (name, (x, y)) in enumerate(sorted(anchors.items())):
+        marker = ET.SubElement(
+            guide_group,
+            _q(SVG_NS, "g"),
+            {
+                "id": f"{element.id}-anchor-guide-{index:03d}",
+                _q(PATCHCREATOR_NS, "construction-role"): "asset-anchor",
+                _q(PATCHCREATOR_NS, "anchor-name"): name,
+            },
+        )
+        ET.SubElement(
+            marker,
+            _q(SVG_NS, "circle"),
+            {"cx": _fmt(x), "cy": _fmt(y), "r": "0.8"},
+        )
+        ET.SubElement(
+            marker,
+            _q(SVG_NS, "line"),
+            {
+                "x1": _fmt(x - 1.2),
+                "y1": _fmt(y),
+                "x2": _fmt(x + 1.2),
+                "y2": _fmt(y),
+            },
+        )
+        ET.SubElement(
+            marker,
+            _q(SVG_NS, "line"),
+            {
+                "x1": _fmt(x),
+                "y1": _fmt(y - 1.2),
+                "x2": _fmt(x),
+                "y2": _fmt(y + 1.2),
+            },
+        )
+
+
 def render_asset(element: Any, context: Any) -> ComponentResult:
     """Import one self-contained plain SVG as editable child geometry."""
 
@@ -329,6 +389,8 @@ def render_asset(element: Any, context: Any) -> ComponentResult:
             _q(PATCHCREATOR_NS, "asset-colour-roles"),
             " ".join(sorted(str(role) for role in raw_roles)),
         )
+
+    _append_anchor_guides(element, context, anchors)
 
     return ComponentResult(
         bounds=Bounds(-width / 2.0, -height / 2.0, width / 2.0, height / 2.0),
