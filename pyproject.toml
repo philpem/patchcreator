@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=75", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +8,23 @@ version = "0.1.0.dev0"
 description = "Procedural, embroidery-aware mission patch SVG composition"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   {name = "Phil Pemberton"},
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Environment :: X11 Applications :: Qt",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Graphics",
 ]
 dependencies = [
   "fonttools>=4.55,<5",
@@ -27,6 +42,11 @@ dev = [
 gui = [
   "PySide6>=6.8,<7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/philpem/patchcreator"
+Repository = "https://github.com/philpem/patchcreator.git"
+Issues = "https://github.com/philpem/patchcreator/issues"
 
 [project.scripts]
 patchcreator = "patchcreator.dispatch:main"
