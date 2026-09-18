@@ -7,6 +7,7 @@ import pytest
 
 from patchcreator.components import ComponentRegistry
 from patchcreator.config.loader import DesignLoadError, load_design, loads_design
+from patchcreator.svg import export_svg_text
 from patchcreator.svg.writer import PATCHCREATOR_NS, SVG_NS, render_design
 
 
@@ -30,7 +31,12 @@ ASSET_SVG = """\
 """
 
 
-def _write_design(tmp_path: Path, *, two_assets: bool = False) -> Path:
+def _write_design(
+    tmp_path: Path,
+    *,
+    two_assets: bool = False,
+    construction_guides: bool = False,
+) -> Path:
     (tmp_path / "mascot.svg").write_text(ASSET_SVG, encoding="utf-8")
     second = """
       - id: mascot2
@@ -45,6 +51,8 @@ def _write_design(tmp_path: Path, *, two_assets: bool = False) -> Path:
         f"""
 version: 0.1
 canvas: {{shape: circle, diameter: 80}}
+settings:
+  construction_guides: {str(construction_guides).lower()}
 palette:
   primary: "#336699"
   primary-light:
@@ -96,6 +104,34 @@ def test_asset_is_builtin_and_relative_path_resolves_from_design(tmp_path: Path)
     assert body.attrib["fill"] != design.palette["primary"]
     assert body.attrib["clip-path"] == "url(#asset-mascot-clip)"
     assert "display:none" in anchor.attrib["style"]
+
+
+def test_asset_anchor_guides_use_resolved_local_anchor_positions(tmp_path: Path):
+    design = load_design(_write_design(tmp_path, construction_guides=True))
+    rendered = render_design(design).svg
+    root = ET.fromstring(rendered)
+
+    guides = root.find(f".//{{{SVG_NS}}}g[@id='mascot-anchor-guides']")
+    marker = root.find(f".//{{{SVG_NS}}}g[@id='mascot-anchor-guide-000']")
+    circle = marker.find(f"{{{SVG_NS}}}circle") if marker is not None else None
+
+    assert guides is not None and marker is not None and circle is not None
+    assert guides.attrib[f"{{{PATCHCREATOR_NS}}}construction-role"] == "asset-anchors"
+    assert marker.attrib[f"{{{PATCHCREATOR_NS}}}construction-role"] == "asset-anchor"
+    assert marker.attrib[f"{{{PATCHCREATOR_NS}}}anchor-name"] == "nose"
+    # The semantic anchor is transformed into asset-component local mm before
+    # the scene placement transform is applied: (80,20) under translate(5,0),
+    # then centred/scaled to a 20x10 mm asset -> (7,-1).
+    assert (circle.attrib["cx"], circle.attrib["cy"], circle.attrib["r"]) == ("7", "-1", "0.8")
+
+    compat = export_svg_text(rendered)
+    assert "mascot-anchor-guides" not in compat.svg
+    assert "mascot-anchor-guide-000" not in compat.svg
+
+
+def test_asset_anchor_guides_are_absent_when_construction_guides_disabled(tmp_path: Path):
+    root = ET.fromstring(render_design(load_design(_write_design(tmp_path))).svg)
+    assert root.find(f".//{{{SVG_NS}}}g[@id='mascot-anchor-guides']") is None
 
 
 def test_multiple_asset_instances_have_collision_safe_ids(tmp_path: Path):
