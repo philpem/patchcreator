@@ -42,6 +42,7 @@ See:
 - [`docs/architecture.md`](docs/architecture.md) — package and scene-graph architecture;
 - [`docs/external-data.md`](docs/external-data.md) — third-party dataset acquisition/cache policy;
 - [`docs/gui.md`](docs/gui.md) — optional GUI installation and editing workflow;
+- [`docs/releasing.md`](docs/releasing.md) — GitHub release and artifact workflow;
 - [`examples/README.md`](examples/README.md) — runnable example catalogue;
 - [`CHANGELOG.md`](CHANGELOG.md) — release notes and version history;
 - [`docs/initial-issues.md`](docs/initial-issues.md) — historical bootstrap backlog.
