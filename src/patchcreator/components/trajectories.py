@@ -495,13 +495,43 @@ def _polyline_d(points: Sequence[tuple[float, float]]) -> str:
     return " ".join(commands)
 
 
-def _hide_construction_paths(group: ET.Element, element_id: str) -> None:
+def _mark_construction_paths(
+    group: ET.Element,
+    element_id: str,
+    *,
+    show_guides: bool,
+    role: str,
+) -> None:
+    """Retain pre-occlusion source geometry as authoring-only construction data."""
+
     for suffix in ("halo", "path"):
         child = group.find(f"{{{SVG_NS}}}path[@id='{element_id}-{suffix}']")
-        if child is not None:
-            existing = child.get("style")
-            child.set("style", "display:none" if not existing else f"{existing};display:none")
-            child.set(_q(PATCHCREATOR_NS, "construction-source"), "true")
+        if child is None:
+            continue
+
+        child.set(_q(PATCHCREATOR_NS, "construction-source"), "true")
+        child.set(_q(PATCHCREATOR_NS, "construction-role"), role)
+
+        # The halo source is redundant as an authoring guide; keep it hidden but
+        # tagged so compatibility export removes it alongside the main source.
+        if suffix == "halo" or not show_guides:
+            child.set("style", "display:none")
+            continue
+
+        # Show only the original main path, in the same visual language as the
+        # generic PatchCreator Construction layer. Preserve geometry/transform,
+        # but suppress artwork styling and markers so this cannot be confused
+        # with the physically split visible result.
+        child.attrib.pop("style", None)
+        child.attrib.pop("marker-start", None)
+        child.attrib.pop("marker-mid", None)
+        child.attrib.pop("marker-end", None)
+        child.set("fill", "none")
+        child.set("stroke", "#00a6ff")
+        child.set("stroke-width", "0.2")
+        child.set("stroke-opacity", "0.75")
+        child.set("stroke-dasharray", "1 1")
+        child.set("vector-effect", "non-scaling-stroke")
 
 
 def _render_visible_parts(
@@ -575,7 +605,12 @@ def _occlusion_finalizer(
         )
         context = finalize_context.render_context
         element = finalize_context.element
-        _hide_construction_paths(context.target_group, element.id)
+        _mark_construction_paths(
+            context.target_group,
+            element.id,
+            show_guides=context.design.settings.construction_guides,
+            role="orbit-source-path" if closed else "trajectory-source-path",
+        )
         _render_visible_parts(
             element,
             context,
