@@ -468,12 +468,14 @@ Construction geometry is ordinary editable SVG tagged with
 scene graph or artwork bounds, the validator ignores it, and the default
 compatibility export removes it.
 
-Component-specific guides may be added as relevant, including:
+Component-specific construction guides currently include:
 
-- orbit construction ellipse/path;
-- asset anchors;
-- text baselines;
-- object/reference origins.
+- curved-text baselines;
+- retained pre-occlusion trajectory/orbit source paths;
+- reusable-asset semantic anchors.
+
+Object/reference-origin markers and additional component-specific guides may be
+added later where they improve authoring without affecting the rendered artwork.
 
 ## 20. SVG outputs
 
