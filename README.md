@@ -123,6 +123,10 @@ Third-party datasets are never silently downloaded or committed into the
 PatchCreator source tree. See [`docs/external-data.md`](docs/external-data.md)
 for cache locations, source declarations and the explicit fetch workflow.
 
+## Licence
+
+PatchCreator is available under the [MIT Licence](LICENSE).
+
 ## Design priorities
 
 - physical sizing in millimetres;
