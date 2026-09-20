@@ -20,6 +20,65 @@ _TRANSFORM_RE = re.compile(r"([A-Za-z]+)\s*\(([^)]*)\)")
 _URL_REF_RE = re.compile(r"url\(\s*#([^)\s]+)\s*\)")
 _NUMBER_SPLIT_RE = re.compile(r"[\s,]+")
 
+# Presentation properties on the source root are inherited by its drawable
+# descendants.  Once the root <svg> is replaced by an ordinary group, carry
+# these properties onto that group so importing an asset does not silently
+# change its appearance.  Structural viewport attributes (width, viewBox,
+# preserveAspectRatio, ... ) intentionally stay out of this set.
+_ROOT_PRESENTATION_ATTRIBUTES = frozenset(
+    {
+        "class",
+        "color",
+        "color-interpolation",
+        "color-interpolation-filters",
+        "color-rendering",
+        "cursor",
+        "display",
+        "fill",
+        "fill-opacity",
+        "fill-rule",
+        "filter",
+        "clip-path",
+        "clip-rule",
+        "image-rendering",
+        "isolation",
+        "font-family",
+        "font-size",
+        "font-size-adjust",
+        "font-stretch",
+        "font-style",
+        "font-variant",
+        "font-weight",
+        "letter-spacing",
+        "word-spacing",
+        "mix-blend-mode",
+        "mask",
+        "marker-end",
+        "marker-mid",
+        "marker-start",
+        "opacity",
+        "overflow",
+        "paint-order",
+        "shape-rendering",
+        "stop-color",
+        "stop-opacity",
+        "stroke",
+        "stroke-dasharray",
+        "stroke-dashoffset",
+        "stroke-linecap",
+        "stroke-linejoin",
+        "stroke-miterlimit",
+        "stroke-opacity",
+        "stroke-width",
+        "text-anchor",
+        "text-decoration",
+        "text-rendering",
+        "vector-effect",
+        "visibility",
+        "style",
+    }
+)
+
 
 def _q(ns: str, name: str) -> str:
     return f"{{{ns}}}{name}"
@@ -232,27 +291,66 @@ def _role_colour(design: Any, value: Any) -> str:
     return resolved
 
 
+def _style_properties(element: ET.Element) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for declaration in element.get("style", "").split(";"):
+        if ":" not in declaration:
+            continue
+        name, value = declaration.split(":", 1)
+        result[name.strip().lower()] = value.strip()
+    return result
+
+
+def _set_style_property(element: ET.Element, name: str, value: str) -> None:
+    """Set one inline style declaration while retaining unrelated declarations."""
+
+    declarations = [part.strip() for part in element.get("style", "").split(";") if part.strip()]
+    output: list[str] = []
+    replaced = False
+    for declaration in declarations:
+        if ":" not in declaration:
+            output.append(declaration)
+            continue
+        raw_name, raw_value = declaration.split(":", 1)
+        if raw_name.strip().lower() == name.lower():
+            output.append(f"{raw_name.strip()}:{value}")
+            replaced = True
+        else:
+            output.append(f"{raw_name.strip()}:{raw_value.strip()}")
+    if not replaced:
+        output.append(f"{name}:{value}")
+    element.set("style", ";".join(output))
+
+
 def _apply_colour_roles(root: ET.Element, roles: Mapping[str, Any], design: Any) -> None:
     for element in root.iter():
         generic = element.get("data-patchcreator-colour-role")
         fill_role = element.get("data-patchcreator-fill-role")
         stroke_role = element.get("data-patchcreator-stroke-role")
+        style = _style_properties(element)
 
         if generic and generic in roles:
             colour = _role_colour(design, roles[generic])
             changed = False
-            if element.get("fill") not in {None, "none"}:
+            if style.get("fill", element.get("fill")) not in {None, "none"}:
                 element.set("fill", colour)
+                _set_style_property(element, "fill", colour)
                 changed = True
-            if element.get("stroke") not in {None, "none"}:
+            if style.get("stroke", element.get("stroke")) not in {None, "none"}:
                 element.set("stroke", colour)
+                _set_style_property(element, "stroke", colour)
                 changed = True
             if not changed:
                 element.set("fill", colour)
+                _set_style_property(element, "fill", colour)
         if fill_role and fill_role in roles:
-            element.set("fill", _role_colour(design, roles[fill_role]))
+            colour = _role_colour(design, roles[fill_role])
+            element.set("fill", colour)
+            _set_style_property(element, "fill", colour)
         if stroke_role and stroke_role in roles:
-            element.set("stroke", _role_colour(design, roles[stroke_role]))
+            colour = _role_colour(design, roles[stroke_role])
+            element.set("stroke", colour)
+            _set_style_property(element, "stroke", colour)
 
 
 def _hide_anchor_markers(root: ET.Element) -> None:
@@ -352,7 +450,16 @@ def render_asset(element: Any, context: Any) -> ComponentResult:
         @ AffineTransform.scale(scale_x, scale_y)
         @ AffineTransform.translation(-min_x, -min_y)
     )
-    anchors = _collect_anchors(root, asset_transform)
+    # The source root is itself a transform/presentation context.  It is lost
+    # when the source <svg> viewport is replaced by an ordinary group, so fold
+    # its transform into both the wrapper and semantic anchor coordinates.
+    root_style = _style_properties(root)
+    # CSS declarations take precedence over presentation attributes.  Parse a
+    # root style transform as well as transform="..." so it is represented in
+    # anchors and the imported wrapper rather than silently discarded.
+    root_transform = _parse_transform(root_style.get("transform", root.get("transform")))
+    composed_asset_transform = asset_transform @ root_transform
+    anchors = _collect_anchors(root, composed_asset_transform)
 
     imported = copy.deepcopy(root)
     _rewrite_ids(imported, f"asset-{element.id}")
@@ -369,10 +476,29 @@ def render_asset(element: Any, context: Any) -> ComponentResult:
         _q(SVG_NS, "g"),
         {
             "id": f"{element.id}-asset",
-            "transform": asset_transform.to_svg(),
+            "transform": composed_asset_transform.to_svg(),
             _q(PATCHCREATOR_NS, "asset-source"): str(source),
         },
     )
+    # Use the transformed/role-resolved copy: URL references now point at the
+    # instance-prefixed IDs and root-level semantic roles have been applied.
+    for key, value in imported.attrib.items():
+        if key in _ROOT_PRESENTATION_ATTRIBUTES:
+            if key == "style":
+                # ``transform`` is not inherited and has already been folded
+                # into composed_asset_transform.  Copying it in the wrapper's
+                # style would apply the root transform a second time.
+                declarations = [
+                    part.strip()
+                    for part in value.split(";")
+                    if part.strip()
+                    and (
+                        ":" not in part
+                        or part.split(":", 1)[0].strip().lower() != "transform"
+                    )
+                ]
+                value = ";".join(declarations)
+            wrapper.set(key, value)
     # Preserve the source SVG's drawable/defs hierarchy without nesting another
     # outer <svg> viewport. IDs/references have already been made instance-safe.
     for child in imported:

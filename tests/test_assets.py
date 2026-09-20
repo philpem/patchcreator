@@ -135,6 +135,80 @@ def test_asset_anchor_guides_are_absent_when_construction_guides_disabled(tmp_pa
     assert root.find(f".//{{{SVG_NS}}}g[@id='mascot-anchor-guides']") is None
 
 
+def test_asset_preserves_root_paint_context_and_resolves_root_roles(tmp_path: Path):
+    source = tmp_path / "root-style.svg"
+    source.write_text(
+        f'''<svg xmlns="{SVG_NS}" width="10mm" height="10mm" viewBox="0 0 10 10"
+  fill="url(#root-gradient)" stroke="#0000ff" transform="translate(1 2)"
+  data-patchcreator-fill-role="primary">
+  <defs><linearGradient id="root-gradient"><stop offset="0" stop-color="#ff0000"/></linearGradient></defs>
+  <rect id="body" width="10" height="10" style="fill:#111111;stroke:#222222"
+    data-patchcreator-fill-role="primary"/>
+  <circle id="anchor" cx="5" cy="5" r="1" data-patchcreator-anchor="centre"/>
+</svg>''',
+        encoding="utf-8",
+    )
+    design = loads_design(
+        f'''version: 0.1
+canvas: {{shape: circle, diameter: 80}}
+palette: {{primary: "#00ff00"}}
+layers:
+  - id: art
+    elements:
+      - id: root-style
+        type: asset
+        source: {source}
+        width: 10
+        roles: {{primary: primary}}
+        position: {{mode: cartesian, x: 0, y: 0}}
+        clip: {{target: none}}
+'''
+    )
+    root = ET.fromstring(render_design(design).svg)
+    wrapper = root.find(f".//{{{SVG_NS}}}g[@id='root-style-asset']")
+    body = root.find(f".//{{{SVG_NS}}}rect[@id='asset-root-style-body']")
+    gradient = root.find(f".//{{{SVG_NS}}}linearGradient[@id='asset-root-style-root-gradient']")
+    assert wrapper is not None and body is not None and gradient is not None
+    assert wrapper.attrib["fill"] == "#00ff00"
+    assert wrapper.attrib["stroke"] == "#0000ff"
+    assert body.attrib["fill"] == "#00ff00"
+    assert "fill:#00ff00" in body.attrib["style"]
+    assert wrapper.attrib["transform"] == "matrix(1 0 0 1 -4 -3)"
+
+
+def test_asset_preserves_root_class_for_inherited_stylesheet_paint(tmp_path: Path):
+    source = tmp_path / "root-class.svg"
+    source.write_text(
+        f'''<svg xmlns="{SVG_NS}" width="10mm" height="10mm" viewBox="0 0 10 10"
+  class="theme">
+  <style>.theme {{ fill: #ff0000; stroke: #0000ff; }}</style>
+  <rect id="body" width="10" height="10"/>
+</svg>''',
+        encoding="utf-8",
+    )
+    design = loads_design(
+        f'''version: 0.1
+canvas: {{shape: circle, diameter: 80}}
+layers:
+  - id: art
+    elements:
+      - id: root-class
+        type: asset
+        source: {source}
+        width: 10
+        clip: {{target: none}}
+'''
+    )
+
+    root = ET.fromstring(render_design(design).svg)
+    wrapper = root.find(f".//{{{SVG_NS}}}g[@id='root-class-asset']")
+    stylesheet = wrapper.find(f"{{{SVG_NS}}}style") if wrapper is not None else None
+
+    assert wrapper is not None and stylesheet is not None
+    assert wrapper.attrib["class"] == "theme"
+    assert ".theme" in (stylesheet.text or "")
+
+
 def test_multiple_asset_instances_have_collision_safe_ids(tmp_path: Path):
     root = ET.fromstring(render_design(load_design(_write_design(tmp_path, two_assets=True))).svg)
     assert root.find(f".//{{{SVG_NS}}}rect[@id='asset-mascot-body']") is not None
