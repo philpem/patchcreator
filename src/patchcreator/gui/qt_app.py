@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStatusBar,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QWidget,
@@ -186,11 +187,19 @@ class MainWindow(QMainWindow):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.addWidget(self.scene_tree, 1)
-        left_layout.addWidget(self.margin_box, 0)
-        left_layout.addWidget(self.placement_box, 0)
-        left_layout.addWidget(self.clip_box, 0)
-        left_layout.addWidget(self.seed_box, 0)
+        self.parameter_tabs = QTabWidget()
+        self.parameter_tabs.addTab(self.placement_box, "Placement")
+        self.parameter_tabs.addTab(self.clip_box, "Clip")
+        self.parameter_tabs.addTab(self.seed_box, "Stars")
+        self.parameter_tabs.addTab(self.margin_box, "Canvas")
+        self.scene_tree.setMinimumHeight(180)
+        self.inspector_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.inspector_splitter.addWidget(self.scene_tree)
+        self.inspector_splitter.addWidget(self.parameter_tabs)
+        self.inspector_splitter.setStretchFactor(0, 1)
+        self.inspector_splitter.setStretchFactor(1, 0)
+        self.inspector_splitter.setSizes([420, 240])
+        left_layout.addWidget(self.inspector_splitter)
 
         self.editor = QPlainTextEdit()
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)

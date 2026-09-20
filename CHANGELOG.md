@@ -19,6 +19,7 @@ Notable changes to PatchCreator are documented in this file.
   including Xviewer/librsvg. Default rendering retains editable text (#117).
 - Handle empty border lengths during live YAML editing without an uncaught
   GUI traceback (#124).
+- Put GUI parameter panes on tabs with a resizable object-tree area (#125).
 
 ## [0.1.0] - 2026-09-18
 

@@ -26,6 +26,12 @@ The GUI provides a YAML source editor, live SVG preview, render diagnostics, a l
 
 The hierarchy is derived afresh from the successfully parsed `DesignSpec`. It shows labels, component types, IDs, visibility and nested groups. Selecting an entry reports its identity/type/visibility in the status bar.
 
+The parameter controls below the tree are grouped into **Placement**, **Clip**,
+**Stars** and **Canvas** tabs. Only one pane occupies space at a time. Drag the
+horizontal divider between the tree and tabs to give the hierarchy more room.
+The preview keeps the patch's aspect ratio when the window or splitters resize.
+Curved text is outlined only for Qt's preview; the source remains editable.
+
 ## Structured placement editing
 
 Selecting an element also opens the **Placement** panel below the scene tree. The first structured-editing slice supports:
