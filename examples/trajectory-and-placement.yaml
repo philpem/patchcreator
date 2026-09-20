@@ -36,7 +36,11 @@ layers:
         seed: 424242
         count: 18
         glyphs: [dot, four-point, four-point-narrow]
-        size_range: [0.8, 1.8]
+        # Omit sizes to use profile-aware defaults for each glyph: small dots,
+        # larger pointed stars with an embroiderable central body.
+        avoidance:
+          - target: top-title
+            clearance: 0.8
         region:
           type: annular-sector
           inner_radius: 0.30r
