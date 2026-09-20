@@ -4,6 +4,8 @@ Notable changes to PatchCreator are documented in this file.
 
 ## Unreleased
 
+- Restore physical stroke widths for borders, trajectories and Earth artwork;
+  correct validation of viewport-sized non-scaling strokes (#115).
 - Handle empty border lengths during live YAML editing without an uncaught
   GUI traceback (#124).
 

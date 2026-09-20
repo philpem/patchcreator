@@ -101,7 +101,6 @@ def _stroke_attrs(design: Any, raw: Any, *, default_colour: str) -> dict[str, st
         "stroke-width": _fmt(width),
         "stroke-linejoin": str(config.get("linejoin", "round")),
         "stroke-linecap": str(config.get("linecap", "round")),
-        "vector-effect": "non-scaling-stroke",
     }
 
 

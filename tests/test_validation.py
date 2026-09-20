@@ -32,7 +32,7 @@ def test_minimum_stroke_finds_thin_visible_presentation_and_inherited_strokes(tm
     assert all(finding.threshold_mm == pytest.approx(0.6) for finding in report.findings)
 
 
-def test_transforms_scale_stroke_but_non_scaling_stroke_does_not(tmp_path: Path):
+def test_transforms_scale_stroke_but_non_scaling_uses_viewport_units(tmp_path: Path):
     path = _write_svg(
         tmp_path,
         """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
@@ -42,9 +42,24 @@ def test_transforms_scale_stroke_but_non_scaling_stroke_does_not(tmp_path: Path)
 </svg>""",
     )
     report = check_svg(path, minimum_stroke_width_mm=0.6)
-    assert len(report.findings) == 1
-    assert report.findings[0].element_id == "scaled"
-    assert report.findings[0].measured_mm == pytest.approx(0.5)
+    assert [finding.element_id for finding in report.findings] == ["scaled", "non-scaling"]
+    assert [finding.measured_mm for finding in report.findings] == pytest.approx(
+        [0.5, 0.8 * 25.4 / 96.0]
+    )
+
+
+def test_non_scaling_stroke_uses_css_px_even_when_viewbox_is_physical_mm(tmp_path: Path):
+    path = _write_svg(
+        tmp_path,
+        """<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="80mm" viewBox="0 0 80 80">
+  <line id="ordinary" x1="0" y1="0" x2="10" y2="0" stroke="#000" stroke-width="1.5"/>
+  <line id="non-scaling" x1="0" y1="1" x2="10" y2="1" stroke="#000" stroke-width="1.5"
+        vector-effect="non-scaling-stroke"/>
+</svg>""",
+    )
+    report = check_svg(path, minimum_stroke_width_mm=0.6)
+    assert [finding.element_id for finding in report.findings] == ["non-scaling"]
+    assert report.findings[0].measured_mm == pytest.approx(1.5 * 25.4 / 96.0)
 
 
 def test_root_css_pixels_are_converted_to_physical_mm(tmp_path: Path):

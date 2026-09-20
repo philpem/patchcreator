@@ -79,7 +79,6 @@ def _stroke_config(raw: Any, design: Any) -> tuple[dict[str, str], float]:
         "stroke-width": _fmt(width),
         "stroke-linecap": str(config.get("linecap", "round")),
         "stroke-linejoin": str(config.get("linejoin", "round")),
-        "vector-effect": "non-scaling-stroke",
     }
 
     dash = config.get("dash", config.get("dasharray"))
@@ -126,7 +125,6 @@ def _halo_config(
         "stroke-width": _fmt(width),
         "stroke-linecap": str(config.get("linecap", main_attrs.get("stroke-linecap", "round"))),
         "stroke-linejoin": str(config.get("linejoin", main_attrs.get("stroke-linejoin", "round"))),
-        "vector-effect": "non-scaling-stroke",
     }
     if "stroke-dasharray" in main_attrs:
         attrs["stroke-dasharray"] = main_attrs["stroke-dasharray"]
