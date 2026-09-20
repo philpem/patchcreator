@@ -20,6 +20,8 @@ Notable changes to PatchCreator are documented in this file.
 - Handle empty border lengths during live YAML editing without an uncaught
   GUI traceback (#124).
 - Put GUI parameter panes on tabs with a resizable object-tree area (#125).
+- Add a lower-half Earth example clipped to the merrowed border's inside edge
+  with documented placement and clipping dimensions (#126).
 
 ## [0.1.0] - 2026-09-18
 
