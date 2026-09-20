@@ -6,6 +6,8 @@ Notable changes to PatchCreator are documented in this file.
 
 - Restore physical stroke widths for borders, trajectories and Earth artwork;
   correct validation of viewport-sized non-scaling strokes (#115).
+- Size decorative starfields against embroidery profiles and report adjustments
+  to explicitly undersized glyphs (#116).
 - Handle empty border lengths during live YAML editing without an uncaught
   GUI traceback (#124).
 

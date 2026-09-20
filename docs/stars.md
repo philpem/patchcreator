@@ -47,6 +47,17 @@ If `seed` is omitted or set to `auto`, PatchCreator generates a 64-bit seed, emi
 
 By default generated stars must fit wholly inside the patch safe area. Set `respect_safe_area: false` only when clipping/overflow is intentionally being handled another way.
 
+When `settings.embroidery_safety` is enabled, a selected embroidery profile
+also sizes generated glyphs against its minimum filled-feature dimension and
+island area. Pointed glyphs use the finite width of their central body (the
+distance between inner vertices), rather than treating their infinitely sharp
+tips as a stitch-width requirement. Profile sizing is silent for the ordinary
+omitted-size defaults; explicitly undersized `size` or `size_range` values are
+enlarged deterministically and produce a warning. The `display-art` profile,
+profiles with validation disabled, and `embroidery_safety: false` leave the
+requested sizes unchanged. Profiles with no geometry thresholds likewise have
+no effect.
+
 ### Regions
 
 `annular-sector` is centred on the patch. Angles use PatchCreator's normal convention: 0° up and increasing clockwise. Radius values may use millimetres or fractions such as `0.8r`.

@@ -2,9 +2,11 @@ import re
 import xml.etree.ElementTree as ET
 
 import pytest
+from shapely.geometry import Polygon
 
 from patchcreator.config.loader import loads_design
 from patchcreator.svg.writer import SVG_NS, render_design
+from patchcreator.validation import check_svg_text
 
 PATCHCREATOR_NS = "https://philpem.github.io/patchcreator/ns"
 
@@ -225,3 +227,100 @@ layers:
     )
     result = render_design(design)
     assert any("placed" in warning and "of 20" in warning for warning in result.warnings)
+
+
+@pytest.mark.parametrize("glyph", ["four-point-narrow", "five-point", "eight-point"])
+def test_profile_enlarges_explicitly_undersized_pointed_stars(glyph):
+    design = loads_design(
+        f"""
+version: 0.1
+canvas: {{shape: circle, diameter: 80}}
+profile: {{intent: standard-patch}}
+layers:
+  - id: background
+    elements:
+      - id: stars
+        type: starfield
+        seed: 7
+        count: 1
+        glyphs: [{glyph}]
+        size_range: [0.5, 0.6]
+        region: {{type: rectangle, x: -10, y: -10, width: 20, height: 20}}
+        respect_safe_area: false
+"""
+    )
+    result = render_design(design)
+    assert any("requested sizes below" in warning for warning in result.warnings)
+    root = ET.fromstring(result.svg)
+    polygon = _generated_stars(root)[0].find(f"{{{SVG_NS}}}polygon")
+    assert polygon is not None
+    values = [float(value) for value in re.split(r"[, ]+", polygon.attrib["points"])]
+    points = list(zip(values[::2], values[1::2]))
+    shape = Polygon(points)
+    assert shape.area >= 1.5 - 1e-5
+    min_x, min_y, max_x, max_y = shape.bounds
+    assert min(max_x - min_x, max_y - min_y) >= 0.8 - 1e-6
+
+
+def test_profile_starfield_sizing_is_deterministic_and_opt_outs_are_honoured():
+    source = """
+version: 0.1
+canvas: {shape: circle, diameter: 80}
+profile: {intent: standard-patch}
+layers:
+  - id: background
+    elements:
+      - id: stars
+        type: starfield
+        seed: 19
+        count: 4
+        glyph: dot
+        size: 0.5
+        region: {type: rectangle, x: -10, y: -10, width: 20, height: 20}
+        respect_safe_area: false
+"""
+    first = render_design(loads_design(source))
+    second = render_design(loads_design(source))
+    assert first.svg == second.svg
+    assert first.warnings == second.warnings
+
+    display = loads_design(source.replace("intent: standard-patch", "intent: display-art"))
+    disabled = loads_design(
+        source.replace("intent: standard-patch", "intent: standard-patch")
+        .replace("profile: {intent: standard-patch}", "profile: {intent: standard-patch}\nsettings: {embroidery_safety: false}")
+    )
+    for design in (display, disabled):
+        result = render_design(design)
+        assert not any("requested sizes below" in warning for warning in result.warnings)
+        circle = _generated_stars(ET.fromstring(result.svg))[0].find(f"{{{SVG_NS}}}circle")
+        assert circle is not None
+        assert float(circle.attrib["r"]) == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize(
+    "glyph", ["dot", "four-point", "four-point-narrow", "five-point", "eight-point"]
+)
+def test_profile_area_margin_survives_svg_validation(glyph):
+    design = loads_design(
+        f"""
+version: 0.1
+canvas: {{shape: circle, diameter: 80}}
+profile:
+  overrides: {{validation_enabled: true, minimum_island_area: 1.5}}
+settings: {{embroidery_safety: true}}
+layers:
+  - id: background
+    elements:
+      - id: stars
+        type: starfield
+        seed: 3
+        count: 1
+        glyph: {glyph}
+        size: 0.1
+        respect_safe_area: false
+        region: {{type: rectangle, x: 0, y: 0, width: 1, height: 1}}
+"""
+    )
+    result = render_design(design)
+    report = check_svg_text(result.svg, minimum_island_area_mm2=1.5)
+    assert not [finding for finding in report.findings if finding.code == "island-too-small"]
