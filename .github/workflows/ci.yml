@@ -40,7 +40,7 @@ jobs:
       - name: Install PatchCreator with GUI
         run: python -m pip install -e '.[dev,gui]'
       - name: Headless GUI smoke test
-        run: pytest tests/test_gui_qt_smoke.py
+        run: pytest tests/test_gui_qt_smoke.py tests/test_gui_aspect.py
 
   inkscape-roundtrip:
     runs-on: ubuntu-latest

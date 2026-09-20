@@ -10,6 +10,7 @@ Notable changes to PatchCreator are documented in this file.
   to explicitly undersized glyphs (#116).
 - Repair Inkscape curved-text references and placed procedural baselines (#117).
 - Fit text using font metrics and preserve whitespace-sensitive SVG content (#118).
+- Preserve preview aspect ratio and drag alignment (#120).
 - Preserve live-text baselines during compatibility export (#121).
 - Preserve inherited source SVG styling during reusable-asset import (#122).
 - Correct Earth land/sea fill topology near equatorial and polar viewpoints (#123).
