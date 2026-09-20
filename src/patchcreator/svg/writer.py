@@ -29,6 +29,7 @@ from patchcreator.geometry.units import parse_length_mm
 from patchcreator.scene.graph import SceneGraph
 from patchcreator.scene.placement import PlacementResolver, ScenePathBinding
 from patchcreator.svg.custom_clip import offset_group_svg_path
+from patchcreator.svg.formatting import indent_svg
 
 SVG_NS = "http://www.w3.org/2000/svg"
 INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
@@ -711,7 +712,7 @@ def render_design(
     if design.settings.construction_guides:
         _add_construction_guides(root, design, geometry)
 
-    ET.indent(root, space="  ")
+    indent_svg(root)
     xml = ET.tostring(root, encoding="unicode", xml_declaration=False)
     return RenderResult(svg=xml + "\n", warnings=tuple(warnings))
 

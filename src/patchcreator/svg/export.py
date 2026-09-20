@@ -14,6 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from patchcreator.assets.normalize import _flatten_safe_leaf_transforms
+from patchcreator.svg.formatting import indent_svg
 from patchcreator.svg.knockout import KnockoutResult, apply_knockout
 from patchcreator.svg.text_outline import TextOutlineError, TextOutlineResult, outline_straight_text
 from patchcreator.svg.text_path_outline import outline_arc_text
@@ -455,7 +456,7 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
     pruned = _prune_unused_defs(root) if options.prune_unused_defs else 0
     _strip_metadata(root, options)
 
-    ET.indent(root, space="  ")
+    indent_svg(root)
     xml = ET.tostring(root, encoding="unicode", xml_declaration=False) + "\n"
     return ExportResult(
         svg=xml,

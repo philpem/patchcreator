@@ -40,7 +40,7 @@ _WEIGHT_NAMES = {
 }
 
 _GENERIC_FAMILIES = {
-    "sans-serif": ("DejaVu Sans", "Noto Sans", "Liberation Sans", "Arial"),
+    "sans serif": ("DejaVu Sans", "Noto Sans", "Liberation Sans", "Arial"),
     "serif": ("DejaVu Serif", "Noto Serif", "Liberation Serif", "Times New Roman"),
     "monospace": ("DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono", "Courier New"),
 }
@@ -229,11 +229,18 @@ def _font_index(directory_names: tuple[str, ...]) -> tuple[FontFaceInfo, ...]:
 
 
 def _candidate_family_names(request: FontRequest) -> tuple[str, ...]:
-    family = request.family.strip()
-    generic = _GENERIC_FAMILIES.get(_normalise_name(family))
-    if generic is not None:
-        return generic + request.fallback_families
-    return (family,) + request.fallback_families
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw_family in (request.family, *request.fallback_families):
+        family = raw_family.strip()
+        candidates = _GENERIC_FAMILIES.get(_normalise_name(family), (family,))
+        for candidate in candidates:
+            normalised = _normalise_name(candidate)
+            if normalised in seen:
+                continue
+            seen.add(normalised)
+            result.append(candidate)
+    return tuple(result)
 
 
 def _select_face(faces: Iterable[FontFaceInfo], request: FontRequest) -> FontFaceInfo | None:

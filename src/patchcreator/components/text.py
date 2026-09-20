@@ -10,6 +10,8 @@ from typing import Any
 from patchcreator.components.registry import ComponentResult
 from patchcreator.geometry import Bounds, parse_angle_degrees, parse_length_mm, polar_to_cartesian
 
+from patchcreator.text import FontRequest, FontResolutionError, resolve_font, shape_text
+
 SVG_NS = "http://www.w3.org/2000/svg"
 PATCHCREATOR_NS = "https://philpem.github.io/patchcreator/ns"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
@@ -157,6 +159,9 @@ def _tracking_attrs(
     *,
     available_length: float | None,
     fit: float,
+    text: str,
+    font_attrs: dict[str, str],
+    warnings: list[str],
 ) -> dict[str, str]:
     if tracking is None or (isinstance(tracking, str) and tracking.lower() in {"normal", "none"}):
         return {}
@@ -166,6 +171,33 @@ def _tracking_attrs(
         target = available_length * fit
         if target <= 0:
             raise ValueError("automatic text fitting produced a non-positive target length")
+        families = [item.strip().strip("\"'") for item in font_attrs["font-family"].split(",")]
+        try:
+            font = resolve_font(FontRequest(
+                family=families[0], fallback_families=tuple(families[1:]),
+                weight=font_attrs["font-weight"], style=font_attrs["font-style"],
+            ))
+        except FontResolutionError as exc:
+            # A live master can be edited on a different machine with the font
+            # installed. Keep that workflow usable, but disclose that fitting
+            # now depends on the receiving renderer's textLength support.
+            warnings.append(f"cannot measure live text font: {exc}; leaving renderer-dependent textLength fitting")
+            return {"textLength": _fmt(target), "lengthAdjust": "spacing"}
+        run = shape_text(text, font)
+        size = float(font_attrs["font-size"])
+        natural = abs(run.x_advance) * size / run.units_per_em
+        if natural <= 0:
+            raise ValueError("automatic text fitting requires a non-zero text advance")
+        # Shrink long runs instead of squeezing their letters together. Explicit
+        # font size/tracking also works in consumers which ignore textLength.
+        size *= min(1.0, target / natural)
+        font_attrs["font-size"] = _fmt(size)
+        font_attrs["font-family"] = font.face.family
+        natural = abs(run.x_advance) * float(font_attrs["font-size"]) / run.units_per_em
+        gaps = len(run.glyphs) - 1
+        font_attrs["letter-spacing"] = _fmt(max(0.0, (target - natural) / gaps)) if gaps > 0 else "0"
+        if gaps <= 0:
+            return {}
         return {
             "textLength": _fmt(target),
             "lengthAdjust": "spacing",
@@ -296,7 +328,7 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             _q(SVG_NS, "text"),
             {**text_attrs, "text-anchor": "middle", "dy": _fmt(baseline_shift)},
         )
-        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit)
+        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit, text=text, font_attrs=text_node.attrib, warnings=warnings)
         text_path = ET.SubElement(
             text_node,
             _q(SVG_NS, "textPath"),
@@ -330,7 +362,7 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             path_length = parse_length_mm(layout["length"])
             if path_length <= 0:
                 raise ValueError("text path length must be positive")
-        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit)
+        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit, text=text, font_attrs=text_attrs, warnings=warnings)
         if isinstance(tracking, str) and tracking.lower() == "auto" and path_length is None:
             warnings.append(
                 f"text {element.id!r} uses tracking:auto on an external path without layout.length; "
@@ -371,7 +403,7 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             width = parse_length_mm(layout["width"])
             if width <= 0:
                 raise ValueError("text band width must be positive")
-        tracking_attrs = _tracking_attrs(tracking, available_length=width, fit=fit)
+        tracking_attrs = _tracking_attrs(tracking, available_length=width, fit=fit, text=text, font_attrs=text_attrs, warnings=warnings)
         text_node = ET.SubElement(
             context.target_group,
             _q(SVG_NS, "text"),
