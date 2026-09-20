@@ -8,6 +8,7 @@ Notable changes to PatchCreator are documented in this file.
   correct validation of viewport-sized non-scaling strokes (#115).
 - Size decorative starfields against embroidery profiles and report adjustments
   to explicitly undersized glyphs (#116).
+- Preserve inherited source SVG styling during reusable-asset import (#122).
 - Correct Earth land/sea fill topology near equatorial and polar viewpoints (#123).
 - Handle empty border lengths during live YAML editing without an uncaught
   GUI traceback (#124).
