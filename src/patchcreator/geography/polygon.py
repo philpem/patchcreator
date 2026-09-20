@@ -43,7 +43,16 @@ def _unit_vector(point: LonLat) -> Vector3:
 
 
 def _dot(first: Vector3, second: Vector3) -> float:
-    return sum(a * b for a, b in zip(first, second))
+    # ``sum`` changed to a higher-accuracy algorithm in Python 3.12.  Use an
+    # explicitly stable operation so spherical topology does not vary between
+    # supported Python versions near antipodal geometry.
+    return math.fsum(
+        (
+            first[0] * second[0],
+            first[1] * second[1],
+            first[2] * second[2],
+        )
+    )
 
 
 def _determinant(first: Vector3, second: Vector3, third: Vector3) -> float:
@@ -59,17 +68,63 @@ def _spherical_signed_area(vectors: Sequence[Vector3]) -> float:
     if len(vectors) < 3:
         return 0.0
 
-    # Sum robust signed triangle areas about the first vertex.  Unlike a
-    # longitude/latitude shoelace calculation this remains valid at both the
-    # antimeridian and poles.  Normalising selects the smaller of the two regions
-    # bounded by a spherical ring, which is the convention used by Natural Earth.
-    anchor = vectors[0]
-    area = 0.0
-    for second, third in zip(vectors[1:], vectors[2:]):
-        area += 2.0 * math.atan2(
-            _determinant(anchor, second, third),
-            1.0 + _dot(anchor, second) + _dot(second, third) + _dot(third, anchor),
+    edges = tuple(
+        (vectors[index], vectors[(index + 1) % len(vectors)])
+        for index in range(len(vectors))
+    )
+
+    # A fan anchored on a ring vertex is singular if the ring also contains its
+    # antipode: both arguments to atan2 become rounding noise.  Choose a separate
+    # reference which maximises the weakest triangle denominator/numerator pair.
+    # The centroid is normally best; Cartesian axes provide deterministic
+    # fallbacks for symmetric rings whose centroid is close to zero.
+    centroid = tuple(
+        math.fsum(vector[axis] for vector in vectors) for axis in range(3)
+    )
+    centroid_norm = math.sqrt(_dot(centroid, centroid))
+    references: list[Vector3] = []
+    if centroid_norm > _EPSILON:
+        references.append(tuple(value / centroid_norm for value in centroid))
+    references.extend(
+        (
+            (1.0, 0.0, 0.0),
+            (-1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, -1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 0.0, -1.0),
         )
+    )
+
+    def stability(reference: Vector3) -> float:
+        return min(
+            math.hypot(
+                _determinant(reference, first, second),
+                1.0
+                + _dot(reference, first)
+                + _dot(first, second)
+                + _dot(second, reference),
+            )
+            for first, second in edges
+        )
+
+    reference = max(references, key=stability)
+    area = math.fsum(
+        2.0
+        * math.atan2(
+            _determinant(reference, first, second),
+            1.0
+            + _dot(reference, first)
+            + _dot(first, second)
+            + _dot(second, reference),
+        )
+        for first, second in edges
+    )
+
+    # Unlike a longitude/latitude shoelace calculation, the solid-angle sum
+    # remains valid at both the antimeridian and poles. Normalising selects the
+    # smaller of the two regions bounded by a spherical ring, which is the
+    # convention used by Natural Earth.
     while area > math.tau:
         area -= 2.0 * math.tau
     while area <= -math.tau:
@@ -91,12 +146,13 @@ def _spherical_contains(ring: Sequence[LonLat], point: LonLat) -> bool:
         return False
 
     query = _unit_vector(point)
-    winding = 0.0
-    for first, second in zip(vectors, vectors[1:] + vectors[:1]):
-        winding += math.atan2(
+    winding = math.fsum(
+        math.atan2(
             _determinant(query, first, second),
             _dot(first, second) - _dot(query, first) * _dot(query, second),
         )
+        for first, second in zip(vectors, vectors[1:] + vectors[:1])
+    )
 
     # The antipodal region has the opposite winding.  Comparing its sign with
     # the signed smaller-region area disambiguates the two sides of the sphere.

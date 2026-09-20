@@ -244,7 +244,7 @@ def test_polar_ring_classifies_visible_land_and_ocean():
     assert not _path_contains(polygons, (0.0, 0.0))
 
 
-def test_multiple_visible_chains_use_one_whole_disc_parity_correction():
+def test_multiple_visible_chains_use_one_whole_disc_parity_correction(monkeypatch):
     # This band contains the camera but crosses the horizon four times.  Its two
     # small coastline closures need one whole-disc toggle to reconstruct the
     # connected visible interior under SVG's even-odd fill rule.
@@ -252,6 +252,17 @@ def test_multiple_visible_chains_use_one_whole_disc_parity_correction():
         (longitude, 30.0) for longitude in range(120, -121, -30)
     )
     band += (band[0],)
+
+    # Python 3.12 made built-in sum more accurate. The spherical result must not
+    # depend on that interpreter detail: this emulates Python 3.11's sequential
+    # accumulation, which exposed an antipodal triangle-fan singularity here.
+    def sequential_sum(values, start=0):
+        result = start
+        for value in values:
+            result += value
+        return result
+
+    monkeypatch.setattr("builtins.sum", sequential_sum)
 
     polygons = visible_ring_polygons(
         band,
