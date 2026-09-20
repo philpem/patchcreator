@@ -416,7 +416,11 @@ def _render_border(element: ElementSpec, context: RenderContext) -> ComponentRes
         inset=inset,
         fill="none",
         stroke=colour,
-        **{"stroke-width": _fmt(width), "vector-effect": "non-scaling-stroke"},
+        # Artwork stroke widths are specified in physical millimetres (the
+        # document user units).  Keeping a non-scaling vector effect here
+        # makes the stroke a screen-space hairline in editors such as
+        # Inkscape, especially when the group is transformed for placement.
+        **{"stroke-width": _fmt(width)},
     )
     return ComponentResult(bounds=_shape_bounds(context.geometry, inset))
 

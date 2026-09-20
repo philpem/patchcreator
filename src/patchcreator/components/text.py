@@ -84,7 +84,6 @@ def _font_attrs(config: Mapping[str, Any], design: Any) -> tuple[dict[str, str],
                 "stroke-width": _fmt(width),
                 "stroke-linejoin": str(stroke_config.get("linejoin", "round")),
                 "paint-order": "stroke fill",
-                "vector-effect": "non-scaling-stroke",
             }
         )
 
