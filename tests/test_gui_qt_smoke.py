@@ -33,6 +33,15 @@ def test_headless_gui_opens_example_and_structured_edit_round_trips():
         assert window.session.source_path == EXAMPLE
         assert window.preview.renderer().isValid()
         assert window.scene_tree.topLevelItemCount() >= 3
+        assert window.parameter_tabs.count() == 4
+        assert window.scene_tree.height() >= 180
+        assert window.inspector_splitter.indexOf(window.scene_tree) == 0
+
+        # Hidden tabs retain their controls and selection state.
+        window.parameter_tabs.setCurrentWidget(window.clip_box)
+        assert window.clip_box.isVisible()
+        assert not window.placement_box.isVisible()
+        window.parameter_tabs.setCurrentWidget(window.placement_box)
 
         item = _find_item(window, "rendezvous-orbit")
         window.scene_tree.setCurrentItem(item)
