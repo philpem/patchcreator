@@ -7,14 +7,19 @@ import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from patchcreator.components.registry import ComponentResult
-from patchcreator.geometry import Bounds, parse_angle_degrees, parse_length_mm, polar_to_cartesian
+from fontTools.pens.svgPathPen import SVGPathPen
+from fontTools.pens.transformPen import TransformPen
+from fontTools.svgLib.path import parse_path
 
+from patchcreator.components.registry import ComponentResult
+from patchcreator.geometry import AffineTransform, Bounds, parse_angle_degrees, parse_length_mm, polar_to_cartesian
 from patchcreator.text import FontRequest, FontResolutionError, resolve_font, shape_text
 
 SVG_NS = "http://www.w3.org/2000/svg"
 PATCHCREATOR_NS = "https://philpem.github.io/patchcreator/ns"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
+XLINK_NS = "http://www.w3.org/1999/xlink"
+ET.register_namespace("xlink", XLINK_NS)
 
 
 def _q(ns: str, name: str) -> str:
@@ -206,6 +211,61 @@ def _tracking_attrs(
     return {"letter-spacing": _fmt(spacing)}
 
 
+def _path_baseline_finalizer(element, context, reference, text_node, text_path, tracking, fit, layout):
+    """Copy a referenced path into the label's frame after scene placement.
+
+    SVG textPath uses the referenced path geometry, not its ancestor transforms.
+    Keeping a local baseline also makes the same layout usable by outlining.
+    """
+    def finalize(final):
+        from patchcreator.components.assets import _parse_transform
+        from patchcreator.geometry import svg_path_sampler
+        fit_warnings: list[str] = []
+
+        found = None
+        def visit(node, transform):
+            nonlocal found
+            try:
+                scene = final.graph.find(node.get("id", ""))
+            except KeyError:
+                transform = transform @ _parse_transform(node.get("transform"))
+            else:
+                transform = scene.world_transform
+            if node.get("id") == reference[1:]:
+                found = (node, transform)
+                return
+            for child in node:
+                visit(child, transform)
+
+        visit(context.svg_root, AffineTransform.identity())
+        if found is None:
+            return (f"text {element.id!r} baseline {reference!r} was not found",)
+        source, world = found
+        if source.tag != _q(SVG_NS, "path"):
+            raise ValueError(f"text {element.id!r} must reference a path")
+        transform = final.scene_node.world_transform.inverse() @ world
+        pen = SVGPathPen(None)
+        parse_path(source.get("d", ""), TransformPen(pen, (transform.a, transform.b, transform.c, transform.d, transform.e, transform.f)))
+        data = pen.getCommands()
+        sampler = svg_path_sampler(data)
+        length = sampler.length()
+        baseline_id = f"{element.id}-baseline"
+        ET.SubElement(context.target_group, _q(SVG_NS, "path"), {
+            "id": baseline_id, "d": data, **_baseline_construction_attrs(context),
+        })
+        text_path.set("href", f"#{baseline_id}")
+        text_path.set(_q(XLINK_NS, "href"), f"#{baseline_id}")
+        if isinstance(tracking, str) and tracking.lower() == "auto":
+            requested = parse_length_mm(layout["length"]) if layout.get("length") is not None else length
+            available = min(requested, length)
+            attrs = _tracking_attrs(tracking, available_length=available, fit=fit,
+                                    text=text_path.text or "", font_attrs=text_node.attrib,
+                                    warnings=fit_warnings)
+            text_path.attrib.update(attrs)
+        return fit_warnings
+    return finalize
+
+
 def _parse_explicit_bounds(raw: Any) -> Bounds | None:
     if raw is None:
         return None
@@ -310,6 +370,7 @@ def render_text(element: Any, context: Any) -> ComponentResult:
     }
     anchors: dict[str, tuple[float, float]] = {}
     warnings: list[str] = []
+    finalize = None
 
     if layout_type in {"top-arc", "bottom-arc", "arc"}:
         d, path_length, path_bounds = _arc_geometry(layout_type, layout)
@@ -328,12 +389,14 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             _q(SVG_NS, "text"),
             {**text_attrs, "text-anchor": "middle", "dy": _fmt(baseline_shift)},
         )
-        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit, text=text, font_attrs=text_node.attrib, warnings=warnings)
+        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit,
+                                         text=text, font_attrs=text_node.attrib, warnings=warnings)
         text_path = ET.SubElement(
             text_node,
             _q(SVG_NS, "textPath"),
             {
                 "href": f"#{baseline_id}",
+                _q(XLINK_NS, "href"): f"#{baseline_id}",
                 "startOffset": str(layout.get("start_offset", "50%")),
                 "method": "align",
                 "spacing": "auto",
@@ -362,12 +425,8 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             path_length = parse_length_mm(layout["length"])
             if path_length <= 0:
                 raise ValueError("text path length must be positive")
-        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit, text=text, font_attrs=text_attrs, warnings=warnings)
-        if isinstance(tracking, str) and tracking.lower() == "auto" and path_length is None:
-            warnings.append(
-                f"text {element.id!r} uses tracking:auto on an external path without layout.length; "
-                "leaving natural font spacing"
-            )
+        tracking_attrs = _tracking_attrs(tracking, available_length=path_length, fit=fit,
+                                         text=text, font_attrs=text_attrs, warnings=warnings)
         text_node = ET.SubElement(
             context.target_group,
             _q(SVG_NS, "text"),
@@ -378,6 +437,7 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             _q(SVG_NS, "textPath"),
             {
                 "href": reference,
+                _q(XLINK_NS, "href"): reference,
                 "startOffset": str(layout.get("start_offset", "50%")),
                 "method": "align",
                 "spacing": "auto",
@@ -385,6 +445,7 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             },
         )
         text_path.text = text
+        finalize = _path_baseline_finalizer(element, context, reference, text_node, text_path, tracking, fit, layout)
         explicit_bounds = _parse_explicit_bounds(layout.get("bounds"))
         bounds = _expanded(explicit_bounds, font_size) if explicit_bounds else None
         if explicit_bounds:
@@ -403,7 +464,8 @@ def render_text(element: Any, context: Any) -> ComponentResult:
             width = parse_length_mm(layout["width"])
             if width <= 0:
                 raise ValueError("text band width must be positive")
-        tracking_attrs = _tracking_attrs(tracking, available_length=width, fit=fit, text=text, font_attrs=text_attrs, warnings=warnings)
+        tracking_attrs = _tracking_attrs(tracking, available_length=width, fit=fit,
+                                         text=text, font_attrs=text_attrs, warnings=warnings)
         text_node = ET.SubElement(
             context.target_group,
             _q(SVG_NS, "text"),
@@ -427,4 +489,4 @@ def render_text(element: Any, context: Any) -> ComponentResult:
 
     context.target_group.set(_q(PATCHCREATOR_NS, "text-layout"), layout_type)
     context.target_group.set(_q(PATCHCREATOR_NS, "text-live"), "true")
-    return ComponentResult(bounds=bounds, anchors=anchors, warnings=tuple(warnings))
+    return ComponentResult(bounds=bounds, anchors=anchors, warnings=tuple(warnings), finalize=finalize)
