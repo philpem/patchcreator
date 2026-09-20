@@ -12,9 +12,15 @@ from typing import Any, Iterable, Sequence
 
 from patchcreator.components.registry import ComponentFinalizeContext, ComponentResult
 from patchcreator.geometry import Bounds, parse_angle_degrees, parse_length_mm, parse_radius
+from patchcreator.profiles import resolve_profile
 
 SVG_NS = "http://www.w3.org/2000/svg"
 PATCHCREATOR_NS = "https://philpem.github.io/patchcreator/ns"
+# SVG coordinates are rounded to six decimal places and the validator
+# approximates circles with finite segments.  Keep a small deterministic
+# cushion above an exact analytical threshold so generated artwork does not
+# fall just below a profile limit after those representations are applied.
+_PROFILE_SIZE_MARGIN = 1.001
 
 
 def _q(ns: str, name: str) -> str:
@@ -104,6 +110,83 @@ def _draw_glyph(
             "four-point-narrow, five-point or eight-point"
         )
     ET.SubElement(parent, _q(SVG_NS, "polygon"), {"points": _points_attr(points), **attrs})
+
+
+# The profile's filled-feature limits are physical limits, so the minimum
+# useful size of a generated glyph can be calculated without flattening the
+# final SVG.  Pointed glyphs have mathematically zero-width tips; those tips
+# are not useful as an embroidery-width measurement.  Instead, their inner
+# vertices define a finite central body width.
+def _glyph_metrics(glyph: str) -> tuple[float, float, float]:
+    """Return (filled area, minimum bbox dimension, central body width) at size 1."""
+    if glyph == "dot":
+        return math.pi / 4.0, 1.0, 1.0
+    if glyph == "four-point":
+        points = _four_point_points(0.5, 0.25)
+        central_width = 2.0 * 0.5 * 0.25
+    elif glyph == "four-point-narrow":
+        points = _four_point_points(0.5, 0.20, narrow=True)
+        central_width = 2.0 * 0.5 * 0.20
+    elif glyph == "five-point":
+        inner = 0.5 * 0.382
+        points = _star_points(5, 0.5, inner)
+        central_width = 2.0 * inner
+    elif glyph == "eight-point":
+        inner = 0.5 * 0.38
+        points = _star_points(8, 0.5, inner)
+        central_width = 2.0 * inner
+    else:
+        raise ValueError(f"unknown star glyph {glyph!r}")
+    area = abs(
+        sum(
+            points[index][0] * points[(index + 1) % len(points)][1]
+            - points[(index + 1) % len(points)][0] * points[index][1]
+            for index in range(len(points))
+        )
+    ) / 2.0
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    minimum_dimension = min(max(xs) - min(xs), max(ys) - min(ys))
+    return area, minimum_dimension, central_width
+
+
+def _profile_minimum_sizes(
+    glyphs: tuple[str, ...],
+    context: Any,
+) -> tuple[dict[str, float], bool]:
+    """Return per-glyph safe sizes and whether profile sizing is active."""
+    if not context.design.settings.embroidery_safety:
+        return {}, False
+
+    effective = resolve_profile(context.design.profile)
+    constraints = effective.constraints
+    # ``display-art`` explicitly disables validation.  A profile with no
+    # geometry thresholds remains a no-op, preserving the historic behaviour
+    # for documents that do not select an embroidery profile.
+    if constraints.validation_enabled is False:
+        return {}, False
+    dimension = constraints.minimum_feature_dimension or 0.0
+    area = constraints.minimum_island_area or 0.0
+    if dimension <= 0.0 and area <= 0.0:
+        return {}, False
+
+    result: dict[str, float] = {}
+    for glyph in glyphs:
+        unit_area, unit_dimension, unit_central_width = _glyph_metrics(glyph)
+        minimum = 0.0
+        if dimension > 0.0:
+            minimum = max(
+                minimum,
+                dimension / unit_dimension,
+                # Use a finite central body width for pointed glyphs.  This
+                # avoids treating their infinitely sharp outer tips as a
+                # physical stitch-width requirement.
+                dimension / unit_central_width,
+            )
+        if area > 0.0:
+            minimum = max(minimum, math.sqrt(area / unit_area))
+        result[glyph] = minimum * _PROFILE_SIZE_MARGIN if minimum > 0.0 else 0.0
+    return result, True
 
 
 def render_star(element: Any, context: Any) -> ComponentResult:
@@ -323,6 +406,7 @@ def _finalize_starfield(
     minimum_separation: float,
     max_attempts: int,
     respect_safe_area: bool,
+    minimum_sizes: dict[str, float],
 ):
     def finalize(finalize_context: ComponentFinalizeContext) -> Iterable[str] | None:
         context = finalize_context.render_context
@@ -372,7 +456,29 @@ def _finalize_starfield(
             ):
                 continue
 
+            # Keep the historic random stream (size is drawn before glyph),
+            # then enlarge an accepted candidate for its selected glyph.  A
+            # larger glyph is checked again so safe-area and avoidance
+            # guarantees still hold after profile sizing.
             glyph = rng.choice(glyphs)
+            size = max(size, minimum_sizes.get(glyph, 0.0))
+            enlarged_radius = size / 2.0
+            if enlarged_radius > radius:
+                if respect_safe_area and not _inside_safe_area(point, enlarged_radius, context.geometry):
+                    continue
+                if any(
+                    _point_in_bounds(point, _expanded(bounds, enlarged_radius))
+                    for _, bounds in avoid_bounds
+                ):
+                    continue
+                if any(
+                    math.hypot(point[0] - other[0][0], point[1] - other[0][1])
+                    < enlarged_radius + other[1] + minimum_separation
+                    for other in placed
+                ):
+                    continue
+                radius = enlarged_radius
+
             local = world_to_local.apply(point)
             star_group = ET.SubElement(
                 context.target_group,
@@ -428,6 +534,26 @@ def render_starfield(element: Any, context: Any) -> ComponentResult:
         raise ValueError("starfield max_attempts must be positive")
     respect_safe_area = bool(cfg.get("respect_safe_area", True))
     seed, generated_seed = _field_seed(cfg.get("seed"))
+    minimum_sizes, safety_active = _profile_minimum_sizes(glyphs, context)
+
+    warnings: tuple[str, ...] = ()
+    if safety_active and minimum_sizes and ("size" in cfg or "size_range" in cfg):
+        requested_minimum = min(size_range)
+        unsafe = {
+            glyph: minimum
+            for glyph, minimum in minimum_sizes.items()
+            if requested_minimum + 1e-12 < minimum
+        }
+        if unsafe:
+            profile_name = context.design.profile.intent or context.design.profile.machine or "custom"
+            details = ", ".join(
+                f"{glyph} ≥ {minimum:.3g} mm" for glyph, minimum in unsafe.items()
+            )
+            warnings = (
+                f"starfield {element.id!r} requested sizes below the {profile_name!r} "
+                f"embroidery minimum; generated glyphs were enlarged to fit "
+                f"glyph-specific minimums ({details})",
+            )
 
     # Conservative prepare-time geometry: decorative starfields are patch-space
     # generators and may sample anywhere in their configured region. Exact
@@ -436,6 +562,7 @@ def render_starfield(element: Any, context: Any) -> ComponentResult:
     bounds = Bounds(0.0, 0.0, context.geometry.width, context.geometry.height)
     return ComponentResult(
         bounds=bounds,
+        warnings=warnings,
         finalize=_finalize_starfield(
             seed=seed,
             generated_seed=generated_seed,
@@ -448,5 +575,6 @@ def render_starfield(element: Any, context: Any) -> ComponentResult:
             minimum_separation=minimum_separation,
             max_attempts=max_attempts,
             respect_safe_area=respect_safe_area,
+            minimum_sizes=minimum_sizes,
         ),
     )

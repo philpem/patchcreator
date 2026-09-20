@@ -1,0 +1,70 @@
+# Lower-half globe composition for an 80 mm round patch.  The Earth centre is
+# 40 mm below the patch centre, so a 70 mm globe starts at y=45 mm and extends
+# beyond the lower edge.  The explicit patch clip keeps it inside the inner
+# edge of the merrowed border:
+#   40 mm patch radius - 1.2 mm border inset - 1.5/2 mm stroke = 38.05 mm.
+version: 0.1
+units: mm
+
+canvas:
+  shape: circle
+  diameter: 80
+  background: space
+  safe_margin:
+    fixed: 3
+
+profile:
+  intent: standard-patch
+
+metadata:
+  title: "Lower Earth Patch"
+
+palette:
+  space: "#05070d"
+  sea: "#1358a8"
+  land: "#63bd50"
+  border: "#ffc928"
+
+settings:
+  default_clip: safe-area
+  inkscape_metadata: true
+  construction_guides: true
+  embroidery_safety: true
+
+layers:
+  - id: patch-background
+    label: Lower Earth
+    elements:
+      - id: lower-earth
+        type: earth
+        render: globe
+        diameter: 70
+        viewpoint:
+          latitude: 30deg
+          longitude: 0deg
+        style:
+          sea: sea
+          land: land
+          atmosphere: null
+        position:
+          mode: polar
+          angle: 180deg
+          radius: 40
+        # The merrowed border's inner edge is 38.05 mm from centre.
+        clip:
+          target: patch
+          inset: 1.95
+        overlap_policy: allow
+
+  - id: border
+    label: Border
+    elements:
+      - id: outer-border
+        type: border
+        inset: 1.2
+        stroke:
+          colour: border
+          width: 1.5
+        clip:
+          target: none
+        overlap_policy: allow

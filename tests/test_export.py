@@ -61,6 +61,46 @@ def test_export_removes_debug_construction_and_authoring_metadata():
     assert all(not key.startswith("{" + PATCHCREATOR_NS + "}") for element in root.iter() for key in element.attrib)
 
 
+def test_export_preserves_referenced_baseline_inside_construction_group():
+    result = export_svg_text(
+        f'''<svg xmlns="{SVG_NS}" xmlns:patchcreator="{PATCHCREATOR_NS}"
+  width="80mm" height="80mm" viewBox="0 0 80 80">
+  <g patchcreator:construction-role="text-guides">
+    <path id="baseline" d="M0 0L10 0" transform="translate(4 5)" stroke="#00a6ff"/>
+    <path id="guide" d="M0 0L1 1" stroke="#00a6ff"/>
+  </g>
+  <text><textPath href="#baseline">LIVE</textPath></text>
+</svg>'''
+    )
+    root = _root(result.svg)
+    baseline = root.find(f".//{{{SVG_NS}}}path[@id='baseline']")
+    assert baseline is not None
+    assert baseline.attrib["transform"] == "translate(4 5)"
+    assert baseline.attrib["stroke"] == "none"
+    assert root.find(f".//*[@id='guide']") is None
+    assert root.find(f".//{{{SVG_NS}}}textPath") is not None
+
+
+def test_export_hides_preserved_baseline_from_author_stylesheet():
+    result = export_svg_text(
+        f'''<svg xmlns="{SVG_NS}" xmlns:patchcreator="{PATCHCREATOR_NS}"
+  width="80mm" height="80mm" viewBox="0 0 80 80">
+  <style>#baseline {{ stroke: #ff0000; stroke-width: 5; }}</style>
+  <path id="baseline" d="M0 0L10 0"
+    patchcreator:construction-role="text-baseline"/>
+  <text><textPath href="#baseline">LIVE</textPath></text>
+</svg>'''
+    )
+
+    root = _root(result.svg)
+    baseline = root.find(f".//{{{SVG_NS}}}path[@id='baseline']")
+
+    assert baseline is not None
+    style = baseline.attrib["style"].replace(" ", "")
+    assert "stroke:none" in style
+    assert "fill:none" in style
+
+
 def test_export_preserves_live_text_by_default():
     result = export_svg_text(
         f"""<svg xmlns="{SVG_NS}" width="80mm" height="80mm" viewBox="0 0 80 80">

@@ -9,7 +9,7 @@ import patchcreator.components.earth as earth_component
 from patchcreator.cli import main
 from patchcreator.components import ComponentRegistry
 from patchcreator.config.loader import loads_design
-from patchcreator.geography import Viewpoint, visible_ring_polygons
+from patchcreator.geography import Viewpoint, orthographic_point, visible_ring_polygons
 from patchcreator.svg.writer import render_design
 
 
@@ -22,6 +22,62 @@ SIMPLE_LAND = (
         (-20.0, -10.0),
     ),
 )
+
+# Coarse, offline outline preserving the important topology of Natural Earth's
+# Antarctic ring: it crosses the antimeridian at the South Pole.  A planar
+# unwrapped-orientation test mistakes this for the complement of Antarctica.
+POLAR_LAND = (
+    (-58.6, -64.2),
+    (-72.2, -76.7),
+    (-30.1, -80.6),
+    (-7.4, -71.3),
+    (30.0, -69.9),
+    (62.4, -68.0),
+    (84.7, -67.2),
+    (118.6, -67.2),
+    (153.6, -68.9),
+    (163.7, -79.1),
+    (180.0, -90.0),
+    (-180.0, -90.0),
+    (-164.2, -84.8),
+    (-152.9, -77.5),
+    (-108.7, -74.9),
+    (-74.9, -73.9),
+    (-58.6, -64.2),
+)
+
+
+def _polygon_area(points: tuple[tuple[float, float], ...]) -> float:
+    return abs(
+        sum(
+            first[0] * second[1] - second[0] * first[1]
+            for first, second in zip(points, points[1:])
+        )
+        / 2.0
+    )
+
+
+def _polygon_contains(
+    points: tuple[tuple[float, float], ...], point: tuple[float, float]
+) -> bool:
+    x, y = point
+    inside = False
+    for first, second in zip(points, points[1:]):
+        if (first[1] > y) == (second[1] > y):
+            continue
+        crossing_x = first[0] + (y - first[1]) * (second[0] - first[0]) / (
+            second[1] - first[1]
+        )
+        if x < crossing_x:
+            inside = not inside
+    return inside
+
+
+def _path_contains(
+    polygons: tuple[tuple[tuple[float, float], ...], ...],
+    point: tuple[float, float],
+) -> bool:
+    return bool(sum(_polygon_contains(polygon, point) for polygon in polygons) % 2)
 
 
 def _use_simple_land(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -162,6 +218,80 @@ def test_visible_ring_polygons_close_crossing_land_along_limb():
         # A horizon-crossing polygon contains an arc with multiple points on the limb.
         on_limb = [point for point in polygon if math.hypot(*point) == pytest.approx(20)]
         assert len(on_limb) >= 2
+
+
+@pytest.mark.parametrize("latitude", [-1, 0, 1, 20])
+def test_polar_ring_does_not_invert_equatorial_globe(latitude: float):
+    radius = 10.0
+    polygons = visible_ring_polygons(
+        POLAR_LAND,
+        Viewpoint(latitude=latitude, longitude=-90),
+        radius=radius,
+    )
+
+    assert polygons
+    assert all(_polygon_area(polygon) < math.pi * radius**2 / 2 for polygon in polygons)
+    assert not _path_contains(polygons, (0.0, 0.0))
+
+
+def test_polar_ring_classifies_visible_land_and_ocean():
+    viewpoint = Viewpoint(latitude=0, longitude=-90)
+    polygons = visible_ring_polygons(POLAR_LAND, viewpoint, radius=10)
+    antarctica, visible = orthographic_point(-90, -80, viewpoint, radius=10)
+
+    assert visible
+    assert _path_contains(polygons, antarctica)
+    assert not _path_contains(polygons, (0.0, 0.0))
+
+
+def test_multiple_visible_chains_use_one_whole_disc_parity_correction(monkeypatch):
+    # This band contains the camera but crosses the horizon four times.  Its two
+    # small coastline closures need one whole-disc toggle to reconstruct the
+    # connected visible interior under SVG's even-odd fill rule.
+    band = tuple((longitude, -30.0) for longitude in range(-120, 121, 30)) + tuple(
+        (longitude, 30.0) for longitude in range(120, -121, -30)
+    )
+    band += (band[0],)
+
+    # Python 3.12 made built-in sum more accurate. The spherical result must not
+    # depend on that interpreter detail: this emulates Python 3.11's sequential
+    # accumulation, which exposed an antipodal triangle-fan singularity here.
+    def sequential_sum(values, start=0):
+        result = start
+        for value in values:
+            result += value
+        return result
+
+    monkeypatch.setattr("builtins.sum", sequential_sum)
+
+    polygons = visible_ring_polygons(
+        band,
+        Viewpoint(),
+        radius=10,
+        limb_step_degrees=5,
+    )
+
+    assert len(polygons) == 3
+    assert _path_contains(polygons, (0.0, 0.0))
+    assert not _path_contains(polygons, (0.0, -9.0))
+
+
+def test_antimeridian_ring_contains_dateline_viewpoint():
+    ring = (
+        (170.0, -10.0),
+        (-170.0, -10.0),
+        (-170.0, 10.0),
+        (170.0, 10.0),
+        (170.0, -10.0),
+    )
+
+    polygons = visible_ring_polygons(
+        ring,
+        Viewpoint(latitude=0, longitude=180),
+        radius=10,
+    )
+
+    assert _path_contains(polygons, (0.0, 0.0))
 
 
 def test_render_cli_reports_missing_natural_earth_without_traceback(

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStatusBar,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QWidget,
@@ -32,6 +33,7 @@ from PySide6.QtSvgWidgets import QSvgWidget
 
 from .drag_edit import drag_position, viewport_to_canvas
 from .session import PreviewResult, PreviewSession, SceneTreeItem
+from .preview import qt_preview_svg
 from .source_edit import SourceEditError
 
 
@@ -58,6 +60,11 @@ class DragSvgWidget(QSvgWidget):
     def __init__(self) -> None:
         super().__init__()
         self._dragging = False
+        self.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+    def load(self, source) -> None:
+        super().load(source)
+        self.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API name
         if event.button() == Qt.MouseButton.LeftButton:
@@ -180,11 +187,19 @@ class MainWindow(QMainWindow):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.addWidget(self.scene_tree, 1)
-        left_layout.addWidget(self.margin_box, 0)
-        left_layout.addWidget(self.placement_box, 0)
-        left_layout.addWidget(self.clip_box, 0)
-        left_layout.addWidget(self.seed_box, 0)
+        self.parameter_tabs = QTabWidget()
+        self.parameter_tabs.addTab(self.placement_box, "Placement")
+        self.parameter_tabs.addTab(self.clip_box, "Clip")
+        self.parameter_tabs.addTab(self.seed_box, "Stars")
+        self.parameter_tabs.addTab(self.margin_box, "Canvas")
+        self.scene_tree.setMinimumHeight(180)
+        self.inspector_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.inspector_splitter.addWidget(self.scene_tree)
+        self.inspector_splitter.addWidget(self.parameter_tabs)
+        self.inspector_splitter.setStretchFactor(0, 1)
+        self.inspector_splitter.setStretchFactor(1, 0)
+        self.inspector_splitter.setSizes([420, 240])
+        left_layout.addWidget(self.inspector_splitter)
 
         self.editor = QPlainTextEdit()
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
@@ -692,12 +707,20 @@ class MainWindow(QMainWindow):
             )
 
     def _show_result(self, result: PreviewResult) -> None:
+        preview_error = None
         if result.svg is not None:
-            self.preview.load(QByteArray(result.svg.encode("utf-8")))
+            try:
+                display_svg = qt_preview_svg(result.svg)
+            except ValueError as exc:
+                preview_error = f"preview: {exc} (showing last successfully drawn preview)"
+            else:
+                self.preview.load(QByteArray(display_svg.encode("utf-8")))
         self._load_safe_margin()
         self._refresh_tree(result.tree)
 
         lines: list[str] = []
+        if preview_error:
+            lines.append(preview_error)
         if result.error:
             lines.append(result.error)
         if result.validation_error:
@@ -713,7 +736,9 @@ class MainWindow(QMainWindow):
             lines.extend(finding.format() for finding in report.findings)
         self.diagnostics.setPlainText("\n".join(lines))
 
-        if result.error:
+        if preview_error:
+            self.statusBar().showMessage(preview_error)
+        elif result.error:
             self.statusBar().showMessage("Preview has errors; showing last valid render and scene tree")
         elif result.validation_error:
             self.statusBar().showMessage("Rendered successfully; validation view unavailable")

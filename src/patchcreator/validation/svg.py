@@ -211,6 +211,10 @@ def iter_visible_strokes(root: ET.Element) -> Iterator[StrokeGeometry]:
         stroke_opacity_raw = _property(element, style, "stroke-opacity", None)
         stroke_opacity = inherited_stroke_opacity * _parse_opacity(stroke_opacity_raw)
         opacity = _parse_opacity(_property(element, style, "opacity", None))
+        # vector-effect is not inherited by default (SVG/CSS initial value is
+        # ``none``).  Only an explicit presentation/style declaration on this
+        # element changes how its stroke width is measured.
+        vector_effect = (_property(element, style, "vector-effect", None) or "").strip().lower()
 
         if (
             not hidden
@@ -223,8 +227,12 @@ def iter_visible_strokes(root: ET.Element) -> Iterator[StrokeGeometry]:
             and stroke.strip().lower() not in {"none", "transparent"}
         ):
             raw_width = stroke_width or "1"
-            base_mm = _parse_css_length_mm(raw_width, user_unit_mm=user_unit_mm)
-            vector_effect = (_property(element, style, "vector-effect", None) or "").strip().lower()
+            # A non-scaling stroke is resolved in the viewport/host
+            # coordinate system.  Unitless widths therefore use CSS px, not
+            # the physical size of a viewBox user unit. Explicit physical
+            # units (mm, in, ...) retain their normal conversion.
+            width_unit_mm = 25.4 / 96.0 if vector_effect == "non-scaling-stroke" else user_unit_mm
+            base_mm = _parse_css_length_mm(raw_width, user_unit_mm=width_unit_mm)
             scale = 1.0 if vector_effect == "non-scaling-stroke" else _minimum_linear_scale(local_transform)
             yield StrokeGeometry(
                 element_id=element.get("id"),

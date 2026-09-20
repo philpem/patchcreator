@@ -71,6 +71,10 @@ Render the small self-contained example:
 patchcreator render examples/minimal-patch.yaml
 ```
 
+Curved text stays editable in the default SVG. For Xviewer and other viewers
+without SVG text-on-path support, use `render --text paths -o artwork.view.svg`
+to create an outlined version. The GUI handles this automatically for previews.
+
 The full 80 mm demonstrator uses Natural Earth land data. Dataset acquisition is
 an explicit action and rendering never silently downloads it:
 

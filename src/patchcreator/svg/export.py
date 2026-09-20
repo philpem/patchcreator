@@ -14,6 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from patchcreator.assets.normalize import _flatten_safe_leaf_transforms
+from patchcreator.svg.formatting import indent_svg
 from patchcreator.svg.knockout import KnockoutResult, apply_knockout
 from patchcreator.svg.text_outline import TextOutlineError, TextOutlineResult, outline_straight_text
 from patchcreator.svg.text_path_outline import outline_arc_text
@@ -228,12 +229,106 @@ def _remove_debug_layers(root: ET.Element) -> int:
     )
 
 
-def _remove_construction_geometry(root: ET.Element) -> int:
-    return _remove_matching(
-        root,
-        lambda element: element.get(_q(PATCHCREATOR_NS, "construction-role")) is not None
-        or element.get("data-patchcreator-construction-role") is not None,
-    )
+def _referenced_text_path_ids(root: ET.Element) -> set[str]:
+    """Return construction geometry IDs still needed by live ``textPath`` nodes.
+
+    Text outlining consumes these paths in ``paths`` mode.  In the default live
+    text mode, however, removing a text baseline leaves the textPath dangling
+    and silently makes the text disappear.  Keep only the referenced geometry;
+    unrelated authoring guides can still be discarded.
+    """
+
+    result: set[str] = set()
+    for element in root.iter():
+        if _local_name(element.tag) != "textPath":
+            continue
+        for key in ("href", _q(XLINK_NS, "href")):
+            value = (element.get(key) or "").strip()
+            if value.startswith("#") and value[1:]:
+                result.add(value[1:])
+    return result
+
+
+def _remove_construction_geometry(
+    root: ET.Element,
+    *,
+    preserve_ids: set[str] | None = None,
+) -> int:
+    """Remove construction nodes except paths needed by live textPath nodes.
+
+    A construction layer may contain both a baseline and ordinary guides.  If
+    an ancestor is tagged as construction, recurse through it when it contains
+    a preserved descendant so that those unrelated siblings are removed too.
+    """
+
+    preserved = preserve_ids or set()
+    removed = 0
+    preserved_construction_ids: set[str] = set()
+
+    def contains_preserved(element: ET.Element) -> bool:
+        return any(item.get("id") in preserved for item in element.iter())
+
+    def collect_preserved(element: ET.Element, construction_context: bool = False) -> None:
+        tagged = (
+            element.get(_q(PATCHCREATOR_NS, "construction-role")) is not None
+            or element.get("data-patchcreator-construction-role") is not None
+        )
+        current_context = construction_context or tagged
+        element_id = element.get("id")
+        if current_context and element_id in preserved:
+            preserved_construction_ids.add(element_id)
+        for child in element:
+            collect_preserved(child, current_context)
+
+    collect_preserved(root)
+
+    def visit(parent: ET.Element, construction_context: bool = False) -> None:
+        nonlocal removed
+        for child in list(parent):
+            tagged = (
+                child.get(_q(PATCHCREATOR_NS, "construction-role")) is not None
+                or child.get("data-patchcreator-construction-role") is not None
+            )
+            is_construction = construction_context or tagged
+            if is_construction and not contains_preserved(child):
+                parent.remove(child)
+                removed += 1
+                continue
+            # Descend through preserved construction containers as well as
+            # ordinary parents, allowing guide siblings to be removed. An
+            # untagged descendant of a construction group is construction
+            # geometry too; this handles hand-authored guide groups that tag
+            # only their container.
+            visit(child, is_construction)
+
+    visit(root)
+
+    # A referenced baseline's stroke is authoring-only.  Keep its geometry and
+    # every transform in its existing hierarchy, but prevent it being painted
+    # in the compatibility output.  Inline style wins over presentation attrs,
+    # so set both forms when necessary.
+    for element in root.iter():
+        if element.get("id") not in preserved_construction_ids:
+            continue
+        element.set("stroke", "none")
+        element.set("fill", "none")
+        style = element.get("style", "")
+        declarations = [part.strip() for part in style.split(";") if part.strip()]
+        output: list[str] = []
+        for declaration in declarations:
+            if ":" not in declaration:
+                output.append(declaration)
+                continue
+            name, value = declaration.split(":", 1)
+            key = name.strip().lower()
+            if key in {"stroke", "fill"}:
+                output.append(f"{key}:none")
+            else:
+                output.append(f"{name.strip()}:{value.strip()}")
+        output.extend(("stroke:none", "fill:none"))
+        element.set("style", ";".join(output))
+
+    return removed
 
 
 def _strip_metadata(root: ET.Element, options: ExportOptions) -> None:
@@ -338,7 +433,16 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
     # Text outlining deliberately runs before construction removal so circular
     # and later arbitrary text-on-path passes can consume PatchCreator's live
     # baseline paths before those authoring-only guides are discarded.
-    removed_construction = _remove_construction_geometry(root) if options.remove_construction else 0
+    preserve_baselines = (
+        _referenced_text_path_ids(root)
+        if options.text_mode == "preserve" and options.remove_construction
+        else set()
+    )
+    removed_construction = (
+        _remove_construction_geometry(root, preserve_ids=preserve_baselines)
+        if options.remove_construction
+        else 0
+    )
     flattened = _flatten_safe_leaf_transforms(root) if options.flatten_safe_transforms else 0
 
     if options.knockout:
@@ -352,7 +456,7 @@ def export_svg_text(text: str, *, options: ExportOptions | None = None) -> Expor
     pruned = _prune_unused_defs(root) if options.prune_unused_defs else 0
     _strip_metadata(root, options)
 
-    ET.indent(root, space="  ")
+    indent_svg(root)
     xml = ET.tostring(root, encoding="unicode", xml_declaration=False) + "\n"
     return ExportResult(
         svg=xml,

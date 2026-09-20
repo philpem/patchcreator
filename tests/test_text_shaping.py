@@ -82,6 +82,24 @@ def test_missing_family_does_not_silently_pick_unrelated_font():
         )
 
 
+def test_generic_family_is_expanded_when_used_as_a_fallback():
+    path = _system_font()
+    explicit = resolve_font(FontRequest(path=path))
+
+    resolved = resolve_font(
+        FontRequest(
+            family="PatchCreator Definitely Missing Font",
+            fallback_families=("sans-serif",),
+            weight=explicit.face.weight,
+            style=explicit.face.style,
+        ),
+        search_directories=[path.parent],
+    )
+
+    assert resolved.face.family == explicit.face.family
+    assert resolved.substituted
+
+
 def test_harfbuzz_shapes_latin_text_and_exposes_glyph_metrics():
     resolved = resolve_font(FontRequest(path=_system_font()))
     run = shape_text("AV Patch", resolved)
