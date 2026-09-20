@@ -5,7 +5,33 @@ PatchCreator keeps text live in the editable master SVG. Compatibility export ca
 1. resolve the requested family/style/weight to one concrete local font face and shape the Unicode text;
 2. convert the shaped glyphs to SVG paths and place those paths in the straight, curved or path-following layout.
 
-The first stage lives in `patchcreator.text` and is deliberately independent of SVG export so the same logic can be reused by a future GUI preview.
+The first stage lives in `patchcreator.text` and is shared by live-text fitting,
+compatibility export.
+
+## Live text and viewer compatibility
+
+Automatic fitting measures the installed font. Long runs shrink to fit the
+available width; shorter runs use explicit letter spacing. The SVG includes
+both ordinary and legacy XLink path references for Inkscape compatibility.
+Procedural path labels use baselines resolved after scene placement, so their
+position agrees with the visible trajectory and outlined output.
+
+If the requested font is not installed, live rendering keeps the editable text
+and warns that fitting depends on the viewer's `textLength` support. Install the
+font for measured fitting and outlined output.
+
+Xviewer's librsvg renderer does not support live `textPath` drawing. For
+Xviewer and similar consumers, render outlined text to a separate file:
+
+```text
+patchcreator render examples/text-layouts.yaml --text paths -o text-layouts.view.svg
+```
+
+This retains the render's layers and construction guides. For a clean downstream
+SVG with guides removed, use `patchcreator export artwork.svg --text paths`.
+Default render/export output keeps live text and the baselines it depends on.
+See [librsvg's text support](https://gnome.pages.gitlab.gnome.org/librsvg/devel-docs/text_layout.html)
+for its viewer limitation.
 
 ## Reproducibility
 

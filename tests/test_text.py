@@ -148,12 +148,13 @@ layers:
     text = _find(root, "text", "label-text")
     text_path = text.find(f"{{{SVG_NS}}}textPath") if text is not None else None
     assert text_path is not None
-    assert text_path.attrib["href"] == "#route-path"
+    assert text_path.attrib["href"] == "#label-baseline"
+    assert text_path.attrib["{http://www.w3.org/1999/xlink}href"] == "#label-baseline"
     assert text_path.attrib["textLength"] == "32"
     assert not result.warnings
 
 
-def test_external_path_auto_tracking_without_length_warns_but_stays_live():
+def test_missing_external_path_warns_but_stays_live():
     design = loads_design(
         """
 version: 0.1
@@ -175,7 +176,7 @@ layers:
     assert text_path is not None
     assert text_path.attrib["href"] == "#external-path"
     assert "textLength" not in text_path.attrib
-    assert any("external path without layout.length" in warning for warning in result.warnings)
+    assert any("baseline '#external-path' was not found" in warning for warning in result.warnings)
 
 
 def test_basic_band_layout_can_auto_fit_to_physical_width():

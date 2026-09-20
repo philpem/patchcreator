@@ -27,8 +27,8 @@ from patchcreator.data import (
 )
 from patchcreator.profiles import ProfileError, load_profile_catalog, resolve_profile
 from patchcreator.profiles.model import ProfileConstraints
-from patchcreator.svg import CompatibilityExportError, ExportOptions, export_svg_file
-from patchcreator.svg.writer import write_design_svg
+from patchcreator.svg import CompatibilityExportError, ExportOptions, export_svg_file, export_svg_text
+from patchcreator.svg.writer import render_design, write_design_svg
 from patchcreator.validation import (
     OverlayStyle,
     SvgInspectionError,
@@ -57,7 +57,19 @@ def _cmd_render(args: argparse.Namespace) -> int:
     try:
         design = load_design(args.design)
         output = Path(args.output) if args.output else Path(args.design).with_suffix(".svg")
-        result = write_design_svg(design, output, allow_unsupported=args.allow_unsupported)
+        if args.text == "paths":
+            rendered = render_design(design, allow_unsupported=args.allow_unsupported)
+            result = export_svg_text(rendered.svg, options=ExportOptions(
+                text_mode="paths", expand_use=False, flatten_safe_transforms=False,
+                remove_debug_layer=False, remove_construction=False,
+                strip_inkscape_metadata=False, strip_patchcreator_metadata=False,
+                prune_unused_defs=False,
+            ))
+            output.write_text(result.svg, encoding="utf-8")
+            for warning in rendered.warnings:
+                print(f"warning: {warning}", file=sys.stderr)
+        else:
+            result = write_design_svg(design, output, allow_unsupported=args.allow_unsupported)
     except (DesignLoadError, DataSourceError, UnsupportedComponentError, OSError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -381,6 +393,10 @@ def build_parser() -> argparse.ArgumentParser:
     render = subparsers.add_parser("render", help="render a YAML design to SVG")
     render.add_argument("design", help="input YAML design")
     render.add_argument("-o", "--output", help="output SVG path (default: input name with .svg)")
+    render.add_argument(
+        "--text", choices=("preserve", "paths"), default="preserve",
+        help="keep editable text (default) or outline it for viewers such as Xviewer",
+    )
     render.add_argument(
         "--allow-unsupported",
         action="store_true",

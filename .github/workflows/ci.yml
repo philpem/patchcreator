@@ -50,11 +50,13 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install PatchCreator
-        run: python -m pip install -e .
+        run: python -m pip install -e '.[dev]'
       - name: Install Inkscape and ImageMagick
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y inkscape imagemagick
+      - name: Verify curved-text glyphs in Inkscape
+        run: pytest tests/test_inkscape_rendering.py
       - name: Render PatchCreator SVG
         run: patchcreator render tests/data/inkscape-roundtrip.yaml -o /tmp/original.svg
       - name: Round-trip through Inkscape
