@@ -2,8 +2,8 @@
 
 ``visible_polyline_parts`` is enough for coastlines, but a filled land polygon
 which crosses the limb must be closed along the circular horizon rather than by
-a straight chord. This module reconstructs those limb arcs while preserving the
-source ring's orientation.
+a straight chord. This module reconstructs those limb arcs using even-odd parity
+and spherical containment.
 
 The implementation intentionally works in projected physical units and does not
 introduce a heavyweight GIS/boolean dependency. Natural Earth 1:110m rings are
@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-from .projection import LonLat, Point, Viewpoint, visible_polyline_parts
+from .projection import LonLat, Point, Vector3, Viewpoint, visible_polyline_parts
 
 _EPSILON = 1e-9
 
@@ -32,37 +32,162 @@ def _signed_area(points: Sequence[Point]) -> float:
     return total / 2.0
 
 
-def _geographic_orientation(ring: Sequence[LonLat]) -> int:
-    """Return source ring orientation after unwrapping the antimeridian.
+def _unit_vector(point: LonLat) -> Vector3:
+    longitude, latitude = (math.radians(value) for value in point)
+    cos_latitude = math.cos(latitude)
+    return (
+        cos_latitude * math.cos(longitude),
+        cos_latitude * math.sin(longitude),
+        math.sin(latitude),
+    )
 
-    ESRI/Natural Earth rings carry meaningful orientation. A naive shoelace area
-    can invert for rings crossing +/-180 degrees, so longitudes are unwrapped to
-    follow the shortest step from each previous vertex first.
-    """
-    points = list(ring)
-    if len(points) > 1 and points[0] == points[-1]:
-        points.pop()
-    if len(points) < 3:
-        return 0
 
-    unwrapped: list[Point] = []
-    previous = points[0][0]
-    unwrapped.append((previous, points[0][1]))
-    for lon, lat in points[1:]:
-        value = lon
-        while value - previous > 180.0:
-            value -= 360.0
-        while value - previous < -180.0:
-            value += 360.0
-        unwrapped.append((value, lat))
-        previous = value
-    unwrapped.append(unwrapped[0])
-    area = _signed_area(unwrapped)
-    if area > _EPSILON:
-        return 1
-    if area < -_EPSILON:
-        return -1
-    return 0
+def _dot(first: Vector3, second: Vector3) -> float:
+    # ``sum`` changed to a higher-accuracy algorithm in Python 3.12.  Use an
+    # explicitly stable operation so spherical topology does not vary between
+    # supported Python versions near antipodal geometry.
+    return math.fsum(
+        (
+            first[0] * second[0],
+            first[1] * second[1],
+            first[2] * second[2],
+        )
+    )
+
+
+def _determinant(first: Vector3, second: Vector3, third: Vector3) -> float:
+    return (
+        first[0] * (second[1] * third[2] - second[2] * third[1])
+        + first[1] * (second[2] * third[0] - second[0] * third[2])
+        + first[2] * (second[0] * third[1] - second[1] * third[0])
+    )
+
+
+def _spherical_signed_area(vectors: Sequence[Vector3]) -> float:
+    """Return the signed area of the smaller region bounded by a unit-sphere ring."""
+    if len(vectors) < 3:
+        return 0.0
+
+    edges = tuple(
+        (vectors[index], vectors[(index + 1) % len(vectors)])
+        for index in range(len(vectors))
+    )
+
+    # A fan anchored on a ring vertex is singular if the ring also contains its
+    # antipode: both arguments to atan2 become rounding noise.  Choose a separate
+    # reference which maximises the weakest triangle denominator/numerator pair.
+    # The centroid is normally best; Cartesian axes provide deterministic
+    # fallbacks for symmetric rings whose centroid is close to zero.
+    centroid = tuple(
+        math.fsum(vector[axis] for vector in vectors) for axis in range(3)
+    )
+    centroid_norm = math.sqrt(_dot(centroid, centroid))
+    references: list[Vector3] = []
+    if centroid_norm > _EPSILON:
+        references.append(tuple(value / centroid_norm for value in centroid))
+    references.extend(
+        (
+            (1.0, 0.0, 0.0),
+            (-1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, -1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 0.0, -1.0),
+        )
+    )
+
+    def stability(reference: Vector3) -> float:
+        return min(
+            math.hypot(
+                _determinant(reference, first, second),
+                1.0
+                + _dot(reference, first)
+                + _dot(first, second)
+                + _dot(second, reference),
+            )
+            for first, second in edges
+        )
+
+    reference = max(references, key=stability)
+    area = math.fsum(
+        2.0
+        * math.atan2(
+            _determinant(reference, first, second),
+            1.0
+            + _dot(reference, first)
+            + _dot(first, second)
+            + _dot(second, reference),
+        )
+        for first, second in edges
+    )
+
+    # Unlike a longitude/latitude shoelace calculation, the solid-angle sum
+    # remains valid at both the antimeridian and poles. Normalising selects the
+    # smaller of the two regions bounded by a spherical ring, which is the
+    # convention used by Natural Earth.
+    while area > math.tau:
+        area -= 2.0 * math.tau
+    while area <= -math.tau:
+        area += 2.0 * math.tau
+    return area
+
+
+def _spherical_contains(ring: Sequence[LonLat], point: LonLat) -> bool:
+    """Return whether *point* lies in the ring's smaller spherical region."""
+    geographic = list(ring)
+    if len(geographic) > 1 and geographic[0] == geographic[-1]:
+        geographic.pop()
+    if len(geographic) < 3:
+        return False
+
+    vectors = [_unit_vector(item) for item in geographic]
+    area = _spherical_signed_area(vectors)
+    if abs(area) <= _EPSILON:
+        return False
+
+    query = _unit_vector(point)
+    winding = math.fsum(
+        math.atan2(
+            _determinant(query, first, second),
+            _dot(first, second) - _dot(query, first) * _dot(query, second),
+        )
+        for first, second in zip(vectors, vectors[1:] + vectors[:1])
+    )
+
+    # The antipodal region has the opposite winding.  Comparing its sign with
+    # the signed smaller-region area disambiguates the two sides of the sphere.
+    return winding * area > _EPSILON
+
+
+def _contains_point(polygon: Sequence[Point], point: Point) -> bool:
+    """Return even-odd containment for one closed projected polygon."""
+    x, y = point
+    inside = False
+    for first, second in zip(polygon, polygon[1:]):
+        if (first[1] > y) == (second[1] > y):
+            continue
+        crossing_x = first[0] + (y - first[1]) * (second[0] - first[0]) / (
+            second[1] - first[1]
+        )
+        if x < crossing_x:
+            inside = not inside
+    return inside
+
+
+def _horizon_disc(
+    *, centre: Point, radius: float, step_degrees: float
+) -> tuple[Point, ...]:
+    start = centre[0] + radius, centre[1]
+    return tuple(
+        _limb_arc(
+            start,
+            start,
+            centre=centre,
+            radius=radius,
+            direction=1,
+            step_degrees=step_degrees,
+        )
+    )
 
 
 def _limb_arc(
@@ -128,15 +253,15 @@ def visible_ring_polygons(
 ) -> tuple[tuple[Point, ...], ...]:
     """Project a geographic land ring into one or more filled visible polygons.
 
-    Every returned polygon is closed. Rings wholly on the visible hemisphere are
-    passed through directly. Rings crossing the camera horizon are split into
-    visible coastline chains and each chain is closed using the appropriate limb
-    arc. The arc direction is chosen to preserve the source ring orientation.
+    Every returned polygon is closed. Rings crossing the camera horizon are split
+    into visible coastline chains. Each chain is closed to the smaller projected
+    region, then a whole-disc parity polygon is added when spherical containment
+    shows that the camera lies inside the source ring. Callers combine the
+    resulting subpaths with ``fill-rule: evenodd``.
 
-    SVG's screen-down Y axis reverses orientation relative to longitude/latitude,
-    so the expected projected sign is the inverse of the unwrapped source sign.
-    This works for both outer rings and holes; callers can combine all subpaths
-    with ``fill-rule: evenodd``.
+    This parity construction handles polar rings, antimeridian crossings and
+    rings with several independent visible coastline chains without relying on
+    longitude/latitude orientation, which is ambiguous at the poles.
     """
     if radius <= 0:
         raise ValueError("orthographic radius must be positive")
@@ -149,10 +274,20 @@ def visible_ring_polygons(
         closed=True,
         simplify_tolerance=simplify_tolerance,
     )
+    camera_inside = _spherical_contains(
+        ring, (viewpoint.longitude, viewpoint.latitude)
+    )
     if not parts:
+        if camera_inside:
+            return (
+                _horizon_disc(
+                    centre=centre,
+                    radius=radius,
+                    step_degrees=limb_step_degrees,
+                ),
+            )
         return ()
 
-    expected_orientation = -_geographic_orientation(ring)
     polygons: list[tuple[Point, ...]] = []
 
     for part in parts:
@@ -182,19 +317,18 @@ def visible_ring_polygons(
             _closed_candidate(part, positive_arc),
             _closed_candidate(part, negative_arc),
         )
-        areas = tuple(_signed_area(candidate) for candidate in candidates)
+        polygons.append(min(candidates, key=lambda item: abs(_signed_area(item))))
 
-        chosen: tuple[Point, ...] | None = None
-        if expected_orientation:
-            for candidate, area in zip(candidates, areas):
-                sign = 1 if area > _EPSILON else -1 if area < -_EPSILON else 0
-                if sign == expected_orientation:
-                    if chosen is None or abs(area) < abs(_signed_area(chosen)):
-                        chosen = candidate
-        if chosen is None:
-            # Degenerate/ambiguous source orientation: prefer the smaller region
-            # rather than accidentally filling almost the entire globe.
-            chosen = min(zip(candidates, areas), key=lambda item: abs(item[1]))[0]
-        polygons.append(chosen)
+    projected_centre_inside = bool(
+        sum(_contains_point(polygon, centre) for polygon in polygons) % 2
+    )
+    if projected_centre_inside != camera_inside:
+        polygons.append(
+            _horizon_disc(
+                centre=centre,
+                radius=radius,
+                step_degrees=limb_step_degrees,
+            )
+        )
 
     return tuple(polygons)
