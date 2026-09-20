@@ -32,6 +32,7 @@ from PySide6.QtSvgWidgets import QSvgWidget
 
 from .drag_edit import drag_position, viewport_to_canvas
 from .session import PreviewResult, PreviewSession, SceneTreeItem
+from .preview import qt_preview_svg
 from .source_edit import SourceEditError
 
 
@@ -697,12 +698,20 @@ class MainWindow(QMainWindow):
             )
 
     def _show_result(self, result: PreviewResult) -> None:
+        preview_error = None
         if result.svg is not None:
-            self.preview.load(QByteArray(result.svg.encode("utf-8")))
+            try:
+                display_svg = qt_preview_svg(result.svg)
+            except ValueError as exc:
+                preview_error = f"preview: {exc} (showing last successfully drawn preview)"
+            else:
+                self.preview.load(QByteArray(display_svg.encode("utf-8")))
         self._load_safe_margin()
         self._refresh_tree(result.tree)
 
         lines: list[str] = []
+        if preview_error:
+            lines.append(preview_error)
         if result.error:
             lines.append(result.error)
         if result.validation_error:
@@ -718,7 +727,9 @@ class MainWindow(QMainWindow):
             lines.extend(finding.format() for finding in report.findings)
         self.diagnostics.setPlainText("\n".join(lines))
 
-        if result.error:
+        if preview_error:
+            self.statusBar().showMessage(preview_error)
+        elif result.error:
             self.statusBar().showMessage("Preview has errors; showing last valid render and scene tree")
         elif result.validation_error:
             self.statusBar().showMessage("Rendered successfully; validation view unavailable")

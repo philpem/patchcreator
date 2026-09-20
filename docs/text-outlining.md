@@ -6,7 +6,7 @@ PatchCreator keeps text live in the editable master SVG. Compatibility export ca
 2. convert the shaped glyphs to SVG paths and place those paths in the straight, curved or path-following layout.
 
 The first stage lives in `patchcreator.text` and is shared by live-text fitting,
-compatibility export.
+compatibility export and the GUI preview.
 
 ## Live text and viewer compatibility
 
@@ -20,8 +20,10 @@ If the requested font is not installed, live rendering keeps the editable text
 and warns that fitting depends on the viewer's `textLength` support. Install the
 font for measured fitting and outlined output.
 
-Xviewer's librsvg renderer does not support live `textPath` drawing. For
-Xviewer and similar consumers, render outlined text to a separate file:
+Qt and Xviewer's librsvg renderer do not support live `textPath` drawing. The
+GUI therefore outlines curved text in an ephemeral preview copy; the master
+and YAML remain editable. For Xviewer and similar consumers, render outlined
+text directly to a separate file:
 
 ```text
 patchcreator render examples/text-layouts.yaml --text paths -o text-layouts.view.svg
