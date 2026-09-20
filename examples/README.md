@@ -37,6 +37,11 @@ border and safe area, Natural-Earth-backed globe, deterministic decorative
 starfield with avoidance, curved text, an orbit that passes in front of/behind
 the Earth and a marker positioned along that orbit.
 
+`lower-earth-patch.yaml` is a compact lower-half composition: a 70 mm globe is
+centred 40 mm below the patch centre and clipped to the inner edge of its
+merrowed border. It uses the same Natural Earth source as the full demonstrator
+and documents the 38.05 mm inner-edge calculation (40 - 1.2 - 1.5/2).
+
 `trajectory-and-placement.yaml` needs no external datasets. It demonstrates a
 line/cubic trajectory, halo and dash styling, arrowheads, an elliptical orbit,
 path-following objects and deterministic procedural stars.
@@ -44,6 +49,11 @@ path-following objects and deterministic procedural stars.
 `text-layouts.yaml` keeps all text live and editable. It demonstrates top and
 bottom arcs, automatic fitting/tracking, text following a procedural trajectory
 and a width-constrained band.
+
+For Xviewer or another viewer without SVG text-on-path support, render a separate
+outlined copy with `patchcreator render examples/text-layouts.yaml --text paths
+-o text-layouts.view.svg`. The GUI performs this conversion for its preview
+automatically; the default SVG remains editable in Inkscape.
 
 `reusable-asset-patch.yaml` imports `assets/demo-satellite.svg`. The asset shows
 the hidden Inkscape anchor-layer convention and semantic fill/stroke colour
