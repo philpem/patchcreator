@@ -58,6 +58,11 @@ class DragSvgWidget(QSvgWidget):
     def __init__(self) -> None:
         super().__init__()
         self._dragging = False
+        self.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+    def load(self, source) -> None:
+        super().load(source)
+        self.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API name
         if event.button() == Qt.MouseButton.LeftButton:

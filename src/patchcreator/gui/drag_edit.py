@@ -56,8 +56,8 @@ def viewport_to_canvas(
 ) -> tuple[float, float] | None:
     """Map preview-widget coordinates to SVG canvas coordinates.
 
-    QSvgWidget uses the normal SVG aspect-ratio preserving "meet" behaviour for
-    PatchCreator output, so the rendered artwork may be letterboxed inside the
+    DragSvgWidget explicitly enables Qt's KeepAspectRatio behaviour, so the
+    rendered artwork may be letterboxed inside the
     widget. Points in that letterboxing return None instead of being
     extrapolated outside the artwork.
     """
