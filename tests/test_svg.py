@@ -53,6 +53,79 @@ layers:
     assert border.attrib["stroke"] == "#ffc928"
 
 
+def test_border_null_lengths_use_defaults_during_live_yaml_edit():
+    design = loads_design(
+        """
+version: 0.1
+canvas: {shape: circle, diameter: 80}
+layers:
+  - id: border
+    elements:
+      - id: outer-border
+        type: border
+        inset:
+        stroke: {width:}
+        clip: {target: none}
+"""
+    )
+    root = ET.fromstring(render_design(design).svg)
+    border = root.find(f".//{{{SVG_NS}}}g[@id='outer-border']/{{{SVG_NS}}}circle")
+    assert border is not None
+    assert border.attrib["r"] == "40"
+    assert border.attrib["stroke-width"] == "1"
+
+
+def test_border_invalid_length_reports_value_error():
+    design = loads_design(
+        """
+version: 0.1
+canvas: {shape: circle, diameter: 80}
+layers:
+  - id: border
+    elements:
+      - id: outer-border
+        type: border
+        inset: not-a-length
+"""
+    )
+    with pytest.raises(ValueError, match="border inset must be a millimetre length"):
+        render_design(design)
+
+
+def test_border_non_mapping_stroke_reports_value_error():
+    design = loads_design(
+        """
+version: 0.1
+canvas: {shape: circle, diameter: 80}
+layers:
+  - id: border
+    elements:
+      - id: outer-border
+        type: border
+        stroke: red
+"""
+    )
+    with pytest.raises(ValueError, match="border stroke must be a mapping"):
+        render_design(design)
+
+
+def test_border_nonfinite_length_reports_value_error():
+    design = loads_design(
+        """
+version: 0.1
+canvas: {shape: circle, diameter: 80}
+layers:
+  - id: border
+    elements:
+      - id: outer-border
+        type: border
+        inset: .nan
+"""
+    )
+    with pytest.raises(ValueError, match="border inset must be a finite"):
+        render_design(design)
+
+
 def test_allow_unsupported_records_warning():
     design = loads_design(
         """

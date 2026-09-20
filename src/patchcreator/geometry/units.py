@@ -13,6 +13,8 @@ _ANGLE_RE = re.compile(r"^\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*(deg|°)?\s*$", re
 def parse_length_mm(value: float | int | str) -> float:
     if isinstance(value, (int, float)):
         return float(value)
+    if not isinstance(value, str):
+        raise ValueError(f"invalid millimetre length: {value!r}")
     match = _LENGTH_RE.match(value)
     if not match:
         raise ValueError(f"invalid millimetre length: {value!r}")
@@ -22,6 +24,8 @@ def parse_length_mm(value: float | int | str) -> float:
 def parse_angle_degrees(value: float | int | str) -> float:
     if isinstance(value, (int, float)):
         return float(value)
+    if not isinstance(value, str):
+        raise ValueError(f"invalid angle: {value!r}; use degrees, e.g. '45deg'")
     match = _ANGLE_RE.match(value)
     if not match:
         raise ValueError(f"invalid angle: {value!r}; use degrees, e.g. '45deg'")
@@ -31,6 +35,8 @@ def parse_angle_degrees(value: float | int | str) -> float:
 def parse_radius(value: float | int | str, reference_radius: float) -> float:
     if isinstance(value, (int, float)):
         return float(value)
+    if not isinstance(value, str):
+        raise ValueError(f"invalid radius: {value!r}; use a length or a fraction such as '0.75r'")
     relative = _RADIUS_RE.match(value)
     if relative:
         return float(relative.group(1)) * reference_radius
