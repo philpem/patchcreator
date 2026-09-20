@@ -2,6 +2,11 @@
 
 Notable changes to PatchCreator are documented in this file.
 
+## Unreleased
+
+- Handle empty border lengths during live YAML editing without an uncaught
+  GUI traceback (#124).
+
 ## [0.1.0] - 2026-09-18
 
 PatchCreator 0.1.0 is the first release of the procedural,

@@ -3,7 +3,12 @@ import pytest
 from patchcreator.config.schema import CanvasSpec, SafeMarginSpec
 from patchcreator.geometry import AffineTransform, Bounds
 from patchcreator.geometry.patch import CanvasGeometry
-from patchcreator.geometry.units import parse_radius, polar_to_cartesian
+from patchcreator.geometry.units import (
+    parse_angle_degrees,
+    parse_length_mm,
+    parse_radius,
+    polar_to_cartesian,
+)
 
 
 def test_fixed_safe_margin():
@@ -33,6 +38,18 @@ def test_polar_zero_is_up_and_clockwise():
 
 def test_relative_radius():
     assert parse_radius("0.75r", 40) == pytest.approx(30)
+
+
+@pytest.mark.parametrize("parser", [parse_length_mm, parse_angle_degrees])
+@pytest.mark.parametrize("value", [None, [], {}])
+def test_scalar_unit_parsers_report_invalid_types_as_value_error(parser, value):
+    with pytest.raises(ValueError):
+        parser(value)
+
+
+def test_radius_parser_reports_invalid_types_as_value_error():
+    with pytest.raises(ValueError):
+        parse_radius([], 40)
 
 
 def test_affine_transform_composition_matches_scene_hierarchy():

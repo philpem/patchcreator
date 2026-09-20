@@ -9,6 +9,8 @@ flattening document-space geometry.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
+import math
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -23,6 +25,7 @@ from patchcreator.config.schema import DesignSpec, ElementSpec, PathPosition, Re
 from patchcreator.geometry.patch import CanvasGeometry
 from patchcreator.geometry.primitives import Bounds
 from patchcreator.geometry.transform import AffineTransform
+from patchcreator.geometry.units import parse_length_mm
 from patchcreator.scene.graph import SceneGraph
 from patchcreator.scene.placement import PlacementResolver, ScenePathBinding
 from patchcreator.svg.custom_clip import offset_group_svg_path
@@ -380,10 +383,33 @@ def _clip_id_for_element(
 
 def _render_border(element: ElementSpec, context: RenderContext) -> ComponentResult:
     cfg = element.component_config()
-    stroke = cfg.get("stroke") or {}
+    raw_stroke = cfg.get("stroke")
+    if raw_stroke is None:
+        stroke: Mapping[str, object] = {}
+    elif not isinstance(raw_stroke, Mapping):
+        raise ValueError("border stroke must be a mapping")
+    else:
+        stroke = raw_stroke
     colour = _palette_colour(context.design, str(stroke.get("colour", "#000000")))
-    width = float(stroke.get("width", 1.0))
-    inset = float(cfg.get("inset", 0.0))
+
+    def length(value: float | int | str | None, *, default: float, name: str) -> float:
+        # GUI editors can transiently emit ``null`` while a mapping value is
+        # being cleared. Treat that state as the component default, but turn
+        # other malformed values into the same actionable ValueError used by
+        # the rest of the component pipeline (rather than leaking TypeError
+        # from float()/the units parser).
+        if value is None:
+            value = default
+        try:
+            parsed = parse_length_mm(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"border {name} must be a millimetre length") from exc
+        if not math.isfinite(parsed):
+            raise ValueError(f"border {name} must be a finite millimetre length")
+        return parsed
+
+    width = length(stroke.get("width", 1.0), default=1.0, name="stroke width")
+    inset = length(cfg.get("inset", 0.0), default=0.0, name="inset")
     _shape_element(
         context.target_group,
         context.geometry,
